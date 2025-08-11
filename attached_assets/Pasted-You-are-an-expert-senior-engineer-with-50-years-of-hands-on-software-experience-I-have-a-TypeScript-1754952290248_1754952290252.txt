@@ -1,0 +1,92 @@
+You are an expert senior engineer with 50 years of hands-on software experience. I have a TypeScript full-stack app called **Prime** (investment + loan) already in this repo. The app is incomplete: it lacks working login/signup/logout, is not connected to Supabase, deposit/payment flow is missing or broken, loan application flow is not working, withdrawals are not implemented, and there are runtime/type errors. I need you to fully finish, fix, and harden the app using my existing Supabase DB schema (provided earlier) and produce runnable builds for APK, web, and iOS.
+
+Work scope and priorities (do these in order):
+1. **Repository analysis**
+   - Run TypeScript compiler, linter, and tests. Produce a clear diagnostics report: list of runtime errors, TypeScript errors, missing imports, broken components, failing unit tests, dependency conflicts, and insecure patterns.
+   - Produce an actionable checklist of every missing feature and every bug, prioritized (P0 — must fix for MVP, P1 — important, P2 — nice-to-have).
+
+2. **Supabase integration**
+   - Add a single `supabaseClient` TypeScript module using official `@supabase/supabase-js` v2 patterns. Read keys from `.env` (`SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`).
+   - Wire authentication to Supabase Auth: implement email+password signup, email verification, signin, signout, session refresh using refresh token, and auth state subscription. Ensure session stored securely (no sensitive secrets in localStorage for web; use secure storage for mobile).
+   - Sync auth user with `public.users` table on signup: insert profile fields (display_name, email, photo_url, walletBalance defaults). Use RLS-friendly patterns (explain RLS assumptions and service_role usage).
+   - Add robust error handling: show user-friendly messages on auth failures.
+
+3. **Auth UI & UX**
+   - Implement complete Sign Up, Sign In, Logout, Forgot Password, Reset Password screens and flows. Validate inputs and show localized human-readable error messages.
+   - After login, fetch `public.users` and `Wallet`, `Virtual Account`, `Investment`, `Loan`, `Transactions` as needed and populate pages.
+   - Implement profile edit (name, email, photo) saving to Supabase.
+
+4. **Payments / Deposit flow**
+   - Implement deposit UI using a **modal bottom sheet** for checkout (mobile-first).
+   - Integrate with external crypto payment API (use a configurable `PAYMENT_API_URL` + `PAYMENT_API_KEY`). Use an idempotency key on each checkout.
+   - On successful API response (HTTP 200), call Supabase to:
+     - Insert a `Transactions` row with `type='deposit'`, `status='success'`, `referenceCode`.
+     - Insert an `Orders` row for admin reconciliation.
+     - Update `Wallet.balance` atomically (use DB transactions or server-side function).
+   - Implement webhook endpoint (serverless or FastAPI/Express handler) to receive payment confirmations from the external API:
+     - Validate signature or token.
+     - Use idempotency: ignore duplicates.
+     - On confirmation, reconcile transaction/order and update wallet OR emit retry/fail handling if mismatch.
+   - Add a polling fallback if webhooks are unreliable: check payment status for pending transactions.
+
+5. **Withdrawals**
+   - Add a user withdrawal request flow:
+     - Create `Orders` and `Transactions` with `type='withdrawal'` and `status='pending'`.
+     - Admin must approve/reject (admin UI).
+     - Blocking/validation: ensure user has sufficient walletBalance when creating request.
+     - Implement server-side safety: use ACID transaction to subtract hold amount when request created; only finalize after admin approval.
+
+6. **Investments & Loans**
+   - Wire Investments list page to `Investment Type` and `Investment` tables:
+     - Admin-created plans should appear to users.
+     - Enforce `minAmount` and `maxAmount` validation in UI & server.
+     - On invest: create `Investment` record, create `Transactions` & `Orders`, and atomically reduce wallet balance (or block/hold funds).
+     - Implement background worker (Celery/Cloud Function or scheduled job) example to compute compound accruals and maturity payouts.
+   - Fix Loan application flow:
+     - Insert `Loan` records on apply, route to `Orders` for admin review.
+     - On approval, disburse funds to wallet (atomic update) and create repayment schedule rows.
+
+7. **Backend, API, and security**
+   - If your repo includes a backend: add secure endpoints for webhook, reconcile, admin actions. If it’s purely frontend, scaffold minimal serverless endpoints to handle webhooks and server-side wallet updates (use Replit web server or suggest hosting).
+   - Do not store service_role keys in client apps. For server-only operations (wallet updates), use a secure server endpoint using `SUPABASE_SERVICE_ROLE_KEY`. Document exact usage.
+   - Add server-side validation for all critical operations (invest, withdraw, disburse) to avoid race conditions; use transactions/row-locks.
+
+8. **UI Theme & polish**
+   - Apply global theme: **Black / White / Gold (#FFB800 or #FF7B00)** and glassmorphism UI elements (backdrop blur for cards, subtle translucency).
+   - Provide CSS/Tailwind config or React Native style theme with tokens: primary, background, surface, accent, text.
+   - Ensure components have accessible contrast, error states, loading skeletons, and success modals.
+
+9. **Runtime errors & code fixes**
+   - Fix TypeScript errors, missing types, and runtime exceptions.
+   - Add defensive guards and error boundaries in React components.
+   - Add unit and integration tests (basic coverage) for critical flows: auth, deposit success/failure, webhook handler, invest flow.
+
+10. **Build & deliverables**
+    - Provide exact commands to build web app and React Native (Expo) app to:
+      - Web: `npm run build` and instructions to serve static.
+      - Android APK: `expo build:android` or `eas build --platform android` (include required credentials).
+      - iOS: `eas build --platform ios` instructions and notes about Apple provisioning (explain limitations if no Apple credentials).
+    - Provide CI scripts (GitHub Actions) that run lint, tests, build web, and optionally create artifacts.
+    - Provide `.env.example` with all required keys and descriptions.
+
+11. **Documentation & next steps**
+    - Produce a README section summarizing:
+      - What was changed/fixed.
+      - How to configure Supabase (tables and RLS notes).
+      - How webhooks and payment reconciliation work.
+      - Admin actions needed (approve withdrawals, reconcile orders).
+    - Provide a prioritized backlog: P0/P1/P2 tasks for remaining work.
+    - Generate a short security checklist and operations runbook for incidents.
+
+Behavior & expectations:
+- Act like a 50-year senior engineer: explain non-trivial decisions in comments and PRs; prefer production-safe patterns.
+- Commit changes with clear atomic commits and a final branch named `supabase-integration-fix`.
+- When you finish, post a summary: diagnostics, fixes applied, commands to run locally, and a clear prioritized backlog.
+
+Output format required:
+1. Run diagnostics and paste the full report.
+2. Make code changes & push commits; if you cannot push, produce patch/PR files.
+3. Provide step-by-step run & build instructions and final verification checklist.
+4. Produce the backlog and security checklist.
+
+Start by running the TypeScript build and linter, then post the diagnostics before making changes.
