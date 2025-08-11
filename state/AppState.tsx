@@ -131,36 +131,56 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     try {
       setLoading(true);
 
-      // Load user's accounts
-      const { data: accounts } = await supabase
+      // Load user's accounts with error handling
+      const { data: accounts, error: accountsError } = await supabase
         .from('Virtual Account')
         .select('*')
         .eq('user_id', user.id);
 
-      // Load user's investments
-      const { data: investments } = await supabase
+      if (accountsError) {
+        console.error('Accounts query error:', accountsError);
+      }
+
+      // Load user's investments with error handling
+      const { data: investments, error: investmentsError } = await supabase
         .from('Investment')
         .select('*')
         .eq('user_ID', user.id);
 
-      // Load user's loans
-      const { data: loans } = await supabase
+      if (investmentsError) {
+        console.error('Investments query error:', investmentsError);
+      }
+
+      // Load user's loans with error handling
+      const { data: loans, error: loansError } = await supabase
         .from('Loan')
         .select('*')
         .eq('user_Id', user.id);
 
-      // Load user's transactions
-      const { data: transactions } = await supabase
+      if (loansError) {
+        console.error('Loans query error:', loansError);
+      }
+
+      // Load user's transactions with error handling
+      const { data: transactions, error: transactionsError } = await supabase
         .from('Transactions')
         .select('*')
         .eq('user_Id', user.id)
         .order('created_at', { ascending: false });
 
-      // Load investment plans
-      const { data: plans } = await supabase
+      if (transactionsError) {
+        console.error('Transactions query error:', transactionsError);
+      }
+
+      // Load investment plans with error handling
+      const { data: plans, error: plansError } = await supabase
         .from('investment_plans')
         .select('*')
         .eq('status', 'active');
+
+      if (plansError) {
+        console.error('Plans query error:', plansError);
+      }
 
       dispatch({
         type: 'SET_USER_DATA',
@@ -174,6 +194,17 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       });
     } catch (error) {
       console.error('Error loading user data:', error);
+      // Set default data on error
+      dispatch({
+        type: 'SET_USER_DATA',
+        payload: {
+          accounts: [],
+          investments: [],
+          loans: [],
+          transactions: [],
+          plans: seedPlans,
+        },
+      });
     } finally {
       setLoading(false);
     }
