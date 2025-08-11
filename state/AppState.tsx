@@ -1,199 +1,370 @@
 
-import React, { createContext, useContext, useMemo, useReducer } from 'react';
+import React, { createContext, useContext, useMemo, useReducer, useEffect, useState } from 'react';
 import { seedPlans } from '../data/plans';
 import { Account, AppState, Investment, InvestmentPlan, Loan, Transaction } from '../types';
 import { randomId } from '../utils/randomId';
+import { AuthService, AuthUser } from '../services/auth';
+import { supabase } from '../lib/supabase';
 
-type Action =
-  | { type: 'TRANSFER'; fromId: string; toId: string; amount: number }
-  | { type: 'DEPOSIT'; accountId: string; amount: number; description?: string }
-  | { type: 'LOAN_APPLY'; loan: Loan }
-  | { type: 'LOAN_APPROVE'; loanId: string }
-  | { type: 'INVEST'; investment: Investment; accountId: string }
-  ;
+const estimatePlanReturn = (plan: InvestmentPlan, amount: number) => {
+  if (amount <= 0) return { expectedReturn: 0, maturityAmount: 0 };
+  // Treat plan.roi as total ROI for the duration; compound compoundingRate times.
+  // A = P * (1 + roi/compoundingRate)^(compoundingRate)
+  const A = amount * Math.pow(1 + plan.roi / plan.compoundingRate, plan.compoundingRate);
+  const expectedReturn = A - amount;
+  return { expectedReturn, maturityAmount: A };
+};
 
-const initialAccounts: Account[] = [
-  { id: 'acc1', name: 'Wall Street Bank', number: '**** 1234', balance: 3500 },
-  { id: 'acc2', name: 'Prime Savings', number: '**** 9876', balance: 1200 },
-];
+interface AppContextType {
+  state: AppState;
+  user: AuthUser | null;
+  loading: boolean;
+  signIn: (email: string, password: string) => Promise<{ error: any }>;
+  signUp: (email: string, password: string, displayName: string) => Promise<{ error: any }>;
+  signOut: () => Promise<void>;
+  createInvestment: (planId: string, amount: number) => Promise<void>;
+  applyForLoan: (amount: number, termMonths: number) => Promise<void>;
+  depositFunds: (amount: number) => Promise<void>;
+  withdrawFunds: (amount: number) => Promise<void>;
+  loadUserData: () => Promise<void>;
+}
+
+const AppContext = createContext<AppContextType | null>(null);
+
+type AppAction =
+  | { type: 'SET_LOADING'; payload: boolean }
+  | { type: 'SET_USER_DATA'; payload: Partial<AppState> }
+  | { type: 'ADD_INVESTMENT'; payload: Investment }
+  | { type: 'ADD_LOAN'; payload: Loan }
+  | { type: 'ADD_TRANSACTION'; payload: Transaction }
+  | { type: 'UPDATE_ACCOUNT_BALANCE'; payload: { accountId: string; balance: number } }
+  | { type: 'SET_PLANS'; payload: InvestmentPlan[] };
+
+const appReducer = (state: AppState, action: AppAction): AppState => {
+  switch (action.type) {
+    case 'SET_USER_DATA':
+      return { ...state, ...action.payload };
+    case 'ADD_INVESTMENT':
+      return {
+        ...state,
+        investments: [...state.investments, action.payload],
+      };
+    case 'ADD_LOAN':
+      return {
+        ...state,
+        loans: [...state.loans, action.payload],
+      };
+    case 'ADD_TRANSACTION':
+      return {
+        ...state,
+        transactions: [...state.transactions, action.payload],
+      };
+    case 'UPDATE_ACCOUNT_BALANCE':
+      return {
+        ...state,
+        accounts: state.accounts.map(account =>
+          account.id === action.payload.accountId
+            ? { ...account, balance: action.payload.balance }
+            : account
+        ),
+      };
+    case 'SET_PLANS':
+      return {
+        ...state,
+        plans: action.payload,
+      };
+    default:
+      return state;
+  }
+};
 
 const initialState: AppState = {
-  accounts: initialAccounts,
+  accounts: [],
   plans: seedPlans,
   investments: [],
   loans: [],
   transactions: [],
 };
 
-function reducer(state: AppState, action: Action): AppState {
-  switch (action.type) {
-    case 'TRANSFER': {
-      const { fromId, toId, amount } = action;
-      const from = state.accounts.find((a) => a.id === fromId);
-      const to = state.accounts.find((a) => a.id === toId);
-      if (!from || !to) {
-        console.log('Transfer: account not found');
-        throw new Error('Account not found.');
+export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [state, dispatch] = useReducer(appReducer, initialState);
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // Initialize auth state
+    const initAuth = async () => {
+      try {
+        const currentUser = await AuthService.getCurrentUser();
+        setUser(currentUser);
+        if (currentUser) {
+          await loadUserData();
+        }
+      } catch (error) {
+        console.error('Auth initialization error:', error);
+      } finally {
+        setLoading(false);
       }
-      if (amount <= 0) throw new Error('Amount must be greater than 0.');
-      if (from.balance < amount) throw new Error('Insufficient balance for transfer.');
-      const accounts = state.accounts.map((a) =>
-        a.id === fromId ? { ...a, balance: a.balance - amount } : a.id === toId ? { ...a, balance: a.balance + amount } : a
-      );
-      const tx: Transaction = {
-        id: randomId('tx'),
-        type: 'transfer',
-        amount,
-        date: new Date().toISOString(),
-        status: 'completed',
-        description: `Transfer from ${from.name} to ${to.name}`,
-      };
-      return { ...state, accounts, transactions: [tx, ...state.transactions] };
-    }
-    case 'DEPOSIT': {
-      const { accountId, amount, description } = action;
-      const accounts = state.accounts.map((a) => (a.id === accountId ? { ...a, balance: a.balance + amount } : a));
-      const tx: Transaction = {
-        id: randomId('tx'),
-        type: 'deposit',
-        amount,
-        date: new Date().toISOString(),
-        status: 'completed',
-        description: description || 'Deposit',
-      };
-      return { ...state, accounts, transactions: [tx, ...state.transactions] };
-    }
-    case 'LOAN_APPLY': {
-      return { ...state, loans: [action.loan, ...state.loans] };
-    }
-    case 'LOAN_APPROVE': {
-      const loan = state.loans.find((l) => l.id === action.loanId);
-      if (!loan) throw new Error('Loan not found.');
-      if (loan.status !== 'pending') throw new Error('Loan not pending.');
-
-      const updatedLoans = state.loans.map((l) => (l.id === loan.id ? { ...l, status: 'approved', approvedAt: new Date().toISOString() } : l));
-      const accounts = state.accounts.map((a) =>
-        a.id === loan.disbursedToAccountId ? { ...a, balance: a.balance + loan.amount } : a
-      );
-
-      const tx: Transaction = {
-        id: randomId('tx'),
-        type: 'loan',
-        amount: loan.amount,
-        date: new Date().toISOString(),
-        status: 'completed',
-        description: `Loan approved (${loan.termMonths} mo @ ${(loan.interestRate * 100).toFixed(1)}%)`,
-      };
-
-      return { ...state, loans: updatedLoans, accounts, transactions: [tx, ...state.transactions] };
-    }
-    case 'INVEST': {
-      const inv = action.investment;
-      // lock funds by deducting from account immediately
-      const accounts = state.accounts.map((a) =>
-        a.id === action.accountId ? { ...a, balance: a.balance - inv.amount } : a
-      );
-      const tx: Transaction = {
-        id: randomId('tx'),
-        type: 'investment',
-        amount: inv.amount,
-        date: new Date().toISOString(),
-        status: 'completed',
-        description: `Invested in ${state.plans.find((p) => p.id === inv.planId)?.name || 'plan'}`,
-      };
-      return { ...state, accounts, investments: [inv, ...state.investments], transactions: [tx, ...state.transactions] };
-    }
-    default:
-      console.log('Unknown action dispatched');
-      return state;
-  }
-}
-
-const AppStateCtx = createContext<
-  AppState & {
-    totalBalance: number;
-    transferBetweenAccounts: (fromId: string, toId: string, amount: number) => void;
-    applyForLoan: (amount: number, termMonths: number, interestRate: number, disburseToAccountId: string) => Loan;
-    approveLoan: (loanId: string) => void;
-    investInPlan: (planId: string, amount: number, fromAccountId: string) => Investment;
-    estimatePlanReturn: (plan: InvestmentPlan, amount: number) => { expectedReturn: number; maturityAmount: number };
-  }
->({} as any);
-
-export function AppStateProvider({ children }: { children: React.ReactNode }) {
-  const [state, dispatch] = useReducer(reducer, initialState);
-
-  const totalBalance = useMemo(() => state.accounts.reduce((sum, a) => sum + a.balance, 0), [state.accounts]);
-
-  const transferBetweenAccounts = (fromId: string, toId: string, amount: number) => {
-    dispatch({ type: 'TRANSFER', fromId, toId, amount });
-  };
-
-  const applyForLoan = (amount: number, termMonths: number, interestRate: number, disburseToAccountId: string) => {
-    const loan: Loan = {
-      id: randomId('loan'),
-      amount,
-      termMonths,
-      interestRate,
-      status: 'pending',
-      disbursedToAccountId,
-      createdAt: new Date().toISOString(),
     };
-    dispatch({ type: 'LOAN_APPLY', loan });
-    return loan;
+
+    initAuth();
+
+    // Listen for auth changes
+    const { data: { subscription } } = AuthService.onAuthStateChange(async (user) => {
+      setUser(user);
+      if (user) {
+        await loadUserData();
+      } else {
+        // Reset state on logout
+        dispatch({ type: 'SET_USER_DATA', payload: initialState });
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  const loadUserData = async () => {
+    if (!user) return;
+
+    try {
+      setLoading(true);
+
+      // Load user's accounts
+      const { data: accounts } = await supabase
+        .from('virtual_accounts')
+        .select('*')
+        .eq('user_id', user.id);
+
+      // Load user's investments
+      const { data: investments } = await supabase
+        .from('investments')
+        .select('*')
+        .eq('user_id', user.id);
+
+      // Load user's loans
+      const { data: loans } = await supabase
+        .from('loans')
+        .select('*')
+        .eq('user_id', user.id);
+
+      // Load user's transactions
+      const { data: transactions } = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      // Load investment plans
+      const { data: plans } = await supabase
+        .from('investment_types')
+        .select('*')
+        .eq('status', 'active');
+
+      dispatch({
+        type: 'SET_USER_DATA',
+        payload: {
+          accounts: accounts || [],
+          investments: investments || [],
+          loans: loans || [],
+          transactions: transactions || [],
+          plans: plans || seedPlans,
+        },
+      });
+    } catch (error) {
+      console.error('Error loading user data:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const approveLoan = (loanId: string) => {
-    dispatch({ type: 'LOAN_APPROVE', loanId });
+  const signIn = async (email: string, password: string) => {
+    setLoading(true);
+    const result = await AuthService.signIn(email, password);
+    setLoading(false);
+    return result;
   };
 
-  const estimatePlanReturn = (plan: InvestmentPlan, amount: number) => {
-    if (amount <= 0) return { expectedReturn: 0, maturityAmount: 0 };
-    // Treat plan.roi as total ROI for the duration; compound compoundingRate times.
-    // A = P * (1 + roi/compoundingRate)^(compoundingRate)
-    const A = amount * Math.pow(1 + plan.roi / plan.compoundingRate, plan.compoundingRate);
-    const expectedReturn = A - amount;
-    return { expectedReturn, maturityAmount: A };
+  const signUp = async (email: string, password: string, displayName: string) => {
+    setLoading(true);
+    const result = await AuthService.signUp(email, password, displayName);
+    setLoading(false);
+    return result;
   };
 
-  const investInPlan = (planId: string, amount: number, fromAccountId: string) => {
-    const plan = state.plans.find((p) => p.id === planId);
-    const from = state.accounts.find((a) => a.id === fromAccountId);
-    if (!plan) throw new Error('Plan not found.');
-    if (!from) throw new Error('Funding account not found.');
-    if (amount < plan.minAmount) throw new Error(`Amount is below the minimum of $${plan.minAmount}.`);
-    if (amount > plan.maxAmount) throw new Error(`Amount exceeds the maximum of $${plan.maxAmount}.`);
-    if (from.balance < amount) throw new Error('Insufficient balance for investment.');
-    const start = new Date();
-    const end = new Date();
-    end.setDate(end.getDate() + plan.durationDays);
-    const { expectedReturn } = estimatePlanReturn(plan, amount);
-    const inv: Investment = {
-      id: randomId('inv'),
+  const signOut = async () => {
+    setLoading(true);
+    await AuthService.signOut();
+    setUser(null);
+    dispatch({ type: 'SET_USER_DATA', payload: initialState });
+    setLoading(false);
+  };
+
+  const createInvestment = async (planId: string, amount: number) => {
+    if (!user) throw new Error('User not authenticated');
+
+    const plan = state.plans.find(p => p.id === planId);
+    if (!plan) throw new Error('Investment plan not found');
+
+    if (amount < plan.minAmount || amount > plan.maxAmount) {
+      throw new Error(`Amount must be between $${plan.minAmount} and $${plan.maxAmount}`);
+    }
+
+    const { expectedReturn, maturityAmount } = estimatePlanReturn(plan, amount);
+    
+    const startDate = new Date();
+    const endDate = new Date();
+    endDate.setDate(startDate.getDate() + plan.durationDays);
+
+    const investment: Investment = {
+      id: randomId(),
       planId,
       amount,
-      startDate: start.toISOString(),
-      endDate: end.toISOString(),
+      startDate: startDate.toISOString(),
+      endDate: endDate.toISOString(),
       status: 'active',
       expectedReturn,
     };
-    dispatch({ type: 'INVEST', investment: inv, accountId: fromAccountId });
-    return inv;
+
+    // Create investment in database
+    const { error } = await supabase
+      .from('investments')
+      .insert({
+        ...investment,
+        user_id: user.id,
+        plan_id: planId,
+        start_date: startDate.toISOString(),
+        end_date: endDate.toISOString(),
+        expected_return: expectedReturn,
+      });
+
+    if (error) throw error;
+
+    // Create transaction record
+    const transaction: Transaction = {
+      id: randomId(),
+      type: 'investment',
+      amount,
+      date: new Date().toISOString(),
+      status: 'completed',
+      description: `Investment in ${plan.name}`,
+      meta: { planId, investmentId: investment.id },
+    };
+
+    await supabase
+      .from('transactions')
+      .insert({
+        ...transaction,
+        user_id: user.id,
+        created_at: transaction.date,
+      });
+
+    dispatch({ type: 'ADD_INVESTMENT', payload: investment });
+    dispatch({ type: 'ADD_TRANSACTION', payload: transaction });
   };
 
-  const value = {
-    ...state,
-    totalBalance,
-    transferBetweenAccounts,
-    applyForLoan,
-    approveLoan,
-    investInPlan,
-    estimatePlanReturn,
+  const applyForLoan = async (amount: number, termMonths: number) => {
+    if (!user) throw new Error('User not authenticated');
+
+    const loan: Loan = {
+      id: randomId(),
+      amount,
+      termMonths,
+      interestRate: 0.15, // 15% annual rate
+      status: 'pending',
+      disbursedToAccountId: '', // Will be set when approved
+      createdAt: new Date().toISOString(),
+    };
+
+    // Create loan in database
+    const { error } = await supabase
+      .from('loans')
+      .insert({
+        ...loan,
+        user_id: user.id,
+        term_months: termMonths,
+        interest_rate: loan.interestRate,
+        created_at: loan.createdAt,
+      });
+
+    if (error) throw error;
+
+    dispatch({ type: 'ADD_LOAN', payload: loan });
   };
 
-  return <AppStateCtx.Provider value={value}>{children}</AppStateCtx.Provider>;
-}
+  const depositFunds = async (amount: number) => {
+    if (!user) throw new Error('User not authenticated');
 
-export function useAppState() {
-  return useContext(AppStateCtx);
-}
+    // This would integrate with payment gateway
+    // For now, simulate successful deposit
+    const transaction: Transaction = {
+      id: randomId(),
+      type: 'deposit',
+      amount,
+      date: new Date().toISOString(),
+      status: 'pending',
+      description: `Deposit of $${amount}`,
+    };
+
+    await supabase
+      .from('transactions')
+      .insert({
+        ...transaction,
+        user_id: user.id,
+        created_at: transaction.date,
+      });
+
+    dispatch({ type: 'ADD_TRANSACTION', payload: transaction });
+  };
+
+  const withdrawFunds = async (amount: number) => {
+    if (!user) throw new Error('User not authenticated');
+
+    const transaction: Transaction = {
+      id: randomId(),
+      type: 'transfer',
+      amount: -amount,
+      date: new Date().toISOString(),
+      status: 'pending',
+      description: `Withdrawal of $${amount}`,
+    };
+
+    await supabase
+      .from('transactions')
+      .insert({
+        ...transaction,
+        user_id: user.id,
+        created_at: transaction.date,
+      });
+
+    dispatch({ type: 'ADD_TRANSACTION', payload: transaction });
+  };
+
+  const contextValue = useMemo<AppContextType>(
+    () => ({
+      state,
+      user,
+      loading,
+      signIn,
+      signUp,
+      signOut,
+      createInvestment,
+      applyForLoan,
+      depositFunds,
+      withdrawFunds,
+      loadUserData,
+    }),
+    [state, user, loading]
+  );
+
+  return <AppContext.Provider value={contextValue}>{children}</AppContext.Provider>;
+};
+
+export const useAppState = (): AppContextType => {
+  const context = useContext(AppContext);
+  if (!context) {
+    throw new Error('useAppState must be used within AppStateProvider');
+  }
+  return context;
+};
