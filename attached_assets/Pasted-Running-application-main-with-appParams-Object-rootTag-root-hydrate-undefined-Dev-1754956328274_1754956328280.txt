@@ -1,0 +1,20 @@
+Running application "main" with appParams:
+ 
+Object {rootTag: "#root", hydrate: undefined}
+ 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+"shadow*" style props are deprecated. Use "boxShadow".
+[Layout children]: No route named "investments" exists in nested children: 
+(14) ["calculator", "history", "index.old", "index", "signin", "signup", "transfer", "_sitemap", "+not-found", "(auth)/signin", "(auth)/signup", "investments/[id]", "investments/index", "loan/index"]
+[Layout children]: No route named "loan" exists in nested children: 
+(14) ["calculator", "history", "index.old", "index", "signin", "signup", "transfer", "_sitemap", "+not-found", "(auth)/signin", "(auth)/signup", "investments/[id]", "investments/index", "loan/index"]
+props.pointerEvents is deprecated. Use style.pointerEvents
+React.jsx: type is invalid -- expected a string (for built-in components) or a class/function (for composite components) but got: undefined. You likely forgot to export your component from the file it's defined in, or you might have mixed up default and named imports.
+<div class="luna-console-preview" data-id="41"><div class="luna-console-preview-container"><div class="luna-console-preview-icon-container"><span class="luna-console-icon luna-console-icon-caret-right"></span></div><span class="luna-console-preview-content-container"><span class="luna-console-descriptor">Error</span> <span class="luna-console-object-preview">{<span class="luna-console-key">componentStack</span>: <span class="luna-console-string">&quot;↵    at div (&lt;anonymous&gt;)↵    at View…&quot;</span>}</span></span></div><div class="luna-console-json luna-console-hidden"></div></div>
+
+The above error occurred in the <div> component.
+
+React will try to recreate this component tree from scratch using the error boundary you provided, LogBoxStateSubscription.
+
+Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
