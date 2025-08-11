@@ -133,32 +133,32 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       // Load user's accounts
       const { data: accounts } = await supabase
-        .from('virtual_accounts')
+        .from('Virtual Account')
         .select('*')
         .eq('user_id', user.id);
 
       // Load user's investments
       const { data: investments } = await supabase
-        .from('investments')
+        .from('Investment')
         .select('*')
-        .eq('user_id', user.id);
+        .eq('user_ID', user.id);
 
       // Load user's loans
       const { data: loans } = await supabase
-        .from('loans')
+        .from('Loan')
         .select('*')
-        .eq('user_id', user.id);
+        .eq('user_Id', user.id);
 
       // Load user's transactions
       const { data: transactions } = await supabase
-        .from('transactions')
+        .from('Transactions')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('user_Id', user.id)
         .order('created_at', { ascending: false });
 
       // Load investment plans
       const { data: plans } = await supabase
-        .from('investment_types')
+        .from('investment_plans')
         .select('*')
         .eq('status', 'active');
 

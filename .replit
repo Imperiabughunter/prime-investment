@@ -14,7 +14,42 @@ mode = "sequential"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "npx expo start --web --port 5000 --host 0.0.0.0"
+args = "npx expo start --web --port 5000"
+
+[[workflows.workflow]]
+name = "Build APK"
+author = 44407998
+mode = "sequential"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "eas build --platform android --profile production-apk"
+
+[[workflows.workflow]]
+name = "Build AAB"
+author = 44407998
+mode = "sequential"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "eas build --platform android --profile production"
+
+[[workflows.workflow]]
+name = "Commit to GitHub"
+author = 44407998
+mode = "sequential"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "git add ."
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "git commit -m \"Update app with database schema and build configuration\""
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "git push origin main"
 
 [deployment]
 run = ["sh", "-c", "npm run dev"]
