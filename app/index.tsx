@@ -15,13 +15,21 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    console.log('Dashboard useEffect - user:', user, 'loading:', loading);
+    
+    if (loading) {
+      return; // Still checking auth state
+    }
+    
     if (!user) {
+      console.log('No user found, redirecting to signin');
       router.replace('/signin');
       return;
     }
 
+    console.log('User found, loading data');
     loadData();
-  }, [user]);
+  }, [user, loading]);
 
   const loadData = async () => {
     try {

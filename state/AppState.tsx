@@ -152,7 +152,13 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return () => subscription.unsubscribe();
   }, []);
 
-  const loadUserData = async (userId: string) => {
+  const loadUserData = async (userId?: string) => {
+    if (!userId && !authUser?.id) {
+      console.error('No user ID provided for loadUserData');
+      return;
+    }
+    
+    const userIdToUse = userId || authUser?.id!;
     setDataLoading(true);
     setError(null);
 
@@ -167,14 +173,14 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         wallet,
         notifications
       ] = await Promise.all([
-        DatabaseService.getUserProfile(userId),
-        DatabaseService.getInvestments(userId),
+        DatabaseService.getUserProfile(userIdToUse),
+        DatabaseService.getInvestments(userIdToUse),
         DatabaseService.getInvestmentPlans(),
-        DatabaseService.getTransactions(userId),
-        DatabaseService.getLoans(userId),
-        DatabaseService.getVirtualAccounts(userId),
-        DatabaseService.getWallet(userId),
-        DatabaseService.getNotifications(userId)
+        DatabaseService.getTransactions(userIdToUse),
+        DatabaseService.getLoans(userIdToUse),
+        DatabaseService.getVirtualAccounts(userIdToUse),
+        DatabaseService.getWallet(userIdToUse),
+        DatabaseService.getNotifications(userIdToUse)
       ]);
 
       dispatch({

@@ -23,24 +23,16 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('Error boundary caught an error:', error, errorInfo);
+    console.error('ErrorBoundary caught an error:', error, errorInfo);
+    console.error('Error stack:', error.stack);
+    console.error('Component stack:', errorInfo.componentStack);
 
-    // Send error to error logging service
-    if (typeof window !== 'undefined' && window.parent) {
-      window.parent.postMessage(
-        {
-          type: 'EXPO_ERROR',
-          level: 'error',
-          message: 'React Error Boundary',
-          data: {
-            error: error.message,
-            stack: error.stack,
-            componentStack: errorInfo.componentStack,
-          },
-          timestamp: new Date().toISOString(),
-        },
-        '*'
-      );
+    // Log to error logging service if available
+    if (typeof window !== 'undefined' && (window as any).errorLogger) {
+      (window as any).errorLogger.logError(error, { 
+        componentStack: errorInfo.componentStack,
+        context: 'ErrorBoundary'
+      });
     }
   }
 
@@ -111,37 +103,6 @@ const styles = StyleSheet.create({
   buttonText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: '600',ontWeight: 'bold',
-    color: '#FFB800', // Amber color for title
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  message: {
-    fontSize: 16,
-    color: '#fff', // White text for message
-    textAlign: 'center',
-    marginBottom: 24,
-    lineHeight: 22,
-  },
-  errorDetails: {
-    fontSize: 12,
-    color: '#FF6B6B', // Reddish color for error details
-    fontFamily: 'monospace',
-    marginBottom: 24,
-    textAlign: 'center',
-  },
-  button: {
-    minWidth: 120,
-    backgroundColor: '#FFB800', // Amber button
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  buttonText: {
-    color: '#000', // Black text for button
-    fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '600',
   },
 });
