@@ -1,79 +1,102 @@
+
 import React, { createContext, useContext, useMemo, useReducer, useEffect, useState } from 'react';
-import { seedPlans } from '../data/plans';
-import { Account, AppState, Investment, InvestmentPlan, Loan, Transaction } from '../types';
-import { randomId } from '../utils/randomId';
+import { 
+  User, 
+  Investment, 
+  InvestmentPlan, 
+  Transaction, 
+  Loan, 
+  VirtualAccount,
+  Wallet,
+  Notification 
+} from '../types';
 import { AuthService, AuthUser } from '../services/auth';
-import { supabase } from '../lib/supabase';
-import { databaseService } from '../services/database';
+import { DatabaseService } from '../services/database';
 
-const estimatePlanReturn = (plan: InvestmentPlan, amount: number) => {
-  if (amount <= 0) return { expectedReturn: 0, maturityAmount: 0 };
-  // Treat plan.roi as total ROI for the duration; compound compoundingRate times.
-  // A = P * (1 + roi/compoundingRate)^(compoundingRate)
-  const A = amount * Math.pow(1 + plan.roi / plan.compoundingRate, plan.compoundingRate);
-  const expectedReturn = A - amount;
-  return { expectedReturn, maturityAmount: A };
-};
+export interface AppState {
+  user: User | null;
+  investments: Investment[];
+  investmentPlans: InvestmentPlan[];
+  transactions: Transaction[];
+  loans: Loan[];
+  virtualAccounts: VirtualAccount[];
+  wallet: Wallet | null;
+  notifications: Notification[];
+}
 
-interface AppContextType {
-  state: AppState;
-  user: AuthUser | null;
+type AppAction = 
+  | { type: 'SET_USER_DATA'; payload: Partial<AppState> }
+  | { type: 'ADD_INVESTMENT'; payload: Investment }
+  | { type: 'ADD_TRANSACTION'; payload: Transaction }
+  | { type: 'ADD_LOAN'; payload: Loan }
+  | { type: 'UPDATE_WALLET'; payload: Wallet }
+  | { type: 'MARK_NOTIFICATION_READ'; payload: number }
+  | { type: 'RESET_DATA' };
+
+export interface AppContextType extends AppState {
+  authUser: AuthUser | null;
   loading: boolean;
   dataLoading: boolean;
   error: string | null;
-  signIn: (email: string, password: string) => Promise<{ error: any }>;
-  signUp: (email: string, password: string, displayName: string) => Promise<{ error: any }>;
+  signIn: (email: string, password: string) => Promise<void>;
+  signUp: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   createInvestment: (planId: string, amount: number) => Promise<void>;
-  applyForLoan: (amount: number, termMonths: number) => Promise<void>;
+  applyForLoan: (amount: number, durationMonths: number) => Promise<void>;
   depositFunds: (amount: number) => Promise<void>;
   withdrawFunds: (amount: number) => Promise<void>;
   loadUserData: (userId: string) => Promise<void>;
+  markNotificationAsRead: (notificationId: number) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
 
-type AppAction =
-  | { type: 'SET_LOADING'; payload: boolean }
-  | { type: 'SET_USER_DATA'; payload: Partial<AppState> }
-  | { type: 'ADD_INVESTMENT'; payload: Investment }
-  | { type: 'ADD_LOAN'; payload: Loan }
-  | { type: 'ADD_TRANSACTION'; payload: Transaction }
-  | { type: 'UPDATE_ACCOUNT_BALANCE'; payload: { accountId: string; balance: number } }
-  | { type: 'SET_PLANS'; payload: InvestmentPlan[] };
-
 const appReducer = (state: AppState, action: AppAction): AppState => {
   switch (action.type) {
     case 'SET_USER_DATA':
-      return { ...state, ...action.payload };
+      return {
+        ...state,
+        ...action.payload,
+      };
     case 'ADD_INVESTMENT':
       return {
         ...state,
-        investments: [...state.investments, action.payload],
-      };
-    case 'ADD_LOAN':
-      return {
-        ...state,
-        loans: [...state.loans, action.payload],
+        investments: [action.payload, ...state.investments],
       };
     case 'ADD_TRANSACTION':
       return {
         ...state,
-        transactions: [...state.transactions, action.payload],
+        transactions: [action.payload, ...state.transactions],
       };
-    case 'UPDATE_ACCOUNT_BALANCE':
+    case 'ADD_LOAN':
       return {
         ...state,
-        accounts: state.accounts.map(account =>
-          account.id === action.payload.accountId
-            ? { ...account, balance: action.payload.balance }
-            : account
+        loans: [action.payload, ...state.loans],
+      };
+    case 'UPDATE_WALLET':
+      return {
+        ...state,
+        wallet: action.payload,
+      };
+    case 'MARK_NOTIFICATION_READ':
+      return {
+        ...state,
+        notifications: state.notifications.map(notification =>
+          notification.id === action.payload
+            ? { ...notification, Is_Read: true }
+            : notification
         ),
       };
-    case 'SET_PLANS':
+    case 'RESET_DATA':
       return {
-        ...state,
-        plans: action.payload,
+        user: null,
+        investments: [],
+        investmentPlans: [],
+        transactions: [],
+        loans: [],
+        virtualAccounts: [],
+        wallet: null,
+        notifications: [],
       };
     default:
       return state;
@@ -81,30 +104,28 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
 };
 
 const initialState: AppState = {
-  accounts: [],
-  plans: seedPlans,
+  user: null,
   investments: [],
-  loans: [],
+  investmentPlans: [],
   transactions: [],
+  loans: [],
+  virtualAccounts: [],
+  wallet: null,
+  notifications: [],
 };
 
 export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [state, dispatch] = useReducer(appReducer, initialState);
-  const [user, setUser] = useState<AuthUser | null>(null);
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [dataLoading, setDataLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const setAccounts = (accounts: Account[]) => dispatch({ type: 'SET_USER_DATA', payload: { accounts } });
-  const setTransactions = (transactions: Transaction[]) => dispatch({ type: 'SET_USER_DATA', payload: { transactions } });
-  const setLoans = (loans: Loan[]) => dispatch({ type: 'SET_USER_DATA', payload: { loans } });
-  const setInvestments = (investments: Investment[]) => dispatch({ type: 'SET_USER_DATA', payload: { investments } });
 
   const checkUser = async () => {
     setLoading(true);
     try {
       const currentUser = await AuthService.getCurrentUser();
-      setUser(currentUser);
+      setAuthUser(currentUser);
       if (currentUser) {
         await loadUserData(currentUser.id);
       }
@@ -118,12 +139,13 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   useEffect(() => {
     checkUser();
+
     const { data: { subscription } } = AuthService.onAuthStateChange((user) => {
-      setUser(user);
+      setAuthUser(user);
       if (user) {
         loadUserData(user.id);
       } else {
-        resetData();
+        dispatch({ type: 'RESET_DATA' });
       }
     });
 
@@ -135,19 +157,39 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setError(null);
 
     try {
-      const [accountsData, transactionsData, loansData, investmentsData, plansData] = await Promise.all([
-        databaseService.getAccounts(userId),
-        databaseService.getTransactions(userId),
-        databaseService.getLoans(userId),
-        databaseService.getInvestments(userId),
-        databaseService.getActiveInvestmentPlans()
+      const [
+        userProfile,
+        investments,
+        investmentPlans,
+        transactions,
+        loans,
+        virtualAccounts,
+        wallet,
+        notifications
+      ] = await Promise.all([
+        DatabaseService.getUserProfile(userId),
+        DatabaseService.getInvestments(userId),
+        DatabaseService.getInvestmentPlans(),
+        DatabaseService.getTransactions(userId),
+        DatabaseService.getLoans(userId),
+        DatabaseService.getVirtualAccounts(userId),
+        DatabaseService.getWallet(userId),
+        DatabaseService.getNotifications(userId)
       ]);
 
-      setAccounts(accountsData);
-      setTransactions(transactionsData);
-      setLoans(loansData);
-      setInvestments(investmentsData);
-      dispatch({ type: 'SET_PLANS', payload: plansData });
+      dispatch({
+        type: 'SET_USER_DATA',
+        payload: {
+          user: userProfile,
+          investments,
+          investmentPlans,
+          transactions,
+          loans,
+          virtualAccounts,
+          wallet,
+          notifications
+        }
+      });
     } catch (error) {
       console.error('Error loading user data:', error);
       setError('Failed to load user data');
@@ -156,130 +198,117 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
-  const resetData = () => {
-    setAccounts([]);
-    setTransactions([]);
-    setLoans([]);
-    setInvestments([]);
-    dispatch({ type: 'SET_PLANS', payload: seedPlans }); // Reset to default plans
-    setError(null);
-  };
-
   const signIn = async (email: string, password: string) => {
-    setLoading(true);
     setError(null);
     try {
-      const { error: authError, user: authUser } = await AuthService.signIn(email, password);
-      if (authError) {
-        setError(authError.message);
-        return { error: authError };
+      const { user, error } = await AuthService.signIn(email, password);
+      if (error) {
+        setError(error);
+        throw new Error(error);
       }
-      if (authUser) {
-        setUser(authUser);
-        await loadUserData(authUser.id);
+      setAuthUser(user);
+      if (user) {
+        await loadUserData(user.id);
       }
-      return { error: null };
     } catch (error: any) {
-      console.error('Sign in error:', error);
-      setError(error.message || 'An unexpected error occurred during sign-in.');
-      return { error };
-    } finally {
-      setLoading(false);
+      console.error('Error signing in:', error);
+      setError(error.message);
+      throw error;
     }
   };
 
-  const signUp = async (email: string, password: string, displayName: string) => {
-    setLoading(true);
+  const signUp = async (email: string, password: string) => {
     setError(null);
     try {
-      const { error: authError, user: authUser } = await AuthService.signUp(email, password, displayName);
-      if (authError) {
-        setError(authError.message);
-        return { error: authError };
+      const { user, error } = await AuthService.signUp(email, password);
+      if (error) {
+        setError(error);
+        throw new Error(error);
       }
-      if (authUser) {
-        setUser(authUser);
-        // Initialize user data after sign up
-        await databaseService.initializeUserData(authUser.id, displayName);
-        await loadUserData(authUser.id);
+      setAuthUser(user);
+      if (user) {
+        await loadUserData(user.id);
       }
-      return { error: null };
     } catch (error: any) {
-      console.error('Sign up error:', error);
-      setError(error.message || 'An unexpected error occurred during sign-up.');
-      return { error };
-    } finally {
-      setLoading(false);
+      console.error('Error signing up:', error);
+      setError(error.message);
+      throw error;
     }
   };
 
   const signOut = async () => {
-    setLoading(true);
-    setError(null);
     try {
       await AuthService.signOut();
-      setUser(null);
-      resetData();
+      setAuthUser(null);
+      dispatch({ type: 'RESET_DATA' });
     } catch (error: any) {
-      console.error('Sign out error:', error);
-      setError(error.message || 'An unexpected error occurred during sign-out.');
-    } finally {
-      setLoading(false);
+      console.error('Error signing out:', error);
+      setError(error.message);
+      throw error;
     }
   };
 
   const createInvestment = async (planId: string, amount: number) => {
-    if (!user) throw new Error('User not authenticated');
+    if (!authUser) throw new Error('User not authenticated');
 
-    const plan = state.plans.find(p => p.id === planId);
+    const plan = state.investmentPlans.find(p => p.id === planId);
     if (!plan) throw new Error('Investment plan not found');
 
-    if (amount < plan.minAmount || amount > plan.maxAmount) {
-      throw new Error(`Amount must be between $${plan.minAmount} and $${plan.maxAmount}`);
-    }
-
-    const { expectedReturn, maturityAmount } = estimatePlanReturn(plan, amount);
-
-    const startDate = new Date();
-    const endDate = new Date();
-    endDate.setDate(startDate.getDate() + plan.durationDays);
-
-    const newInvestment: Omit<Investment, 'id'> = {
-      planId,
+    const investment: Omit<Investment, 'id' | 'created_at'> = {
+      user_ID: authUser.id,
       amount,
-      startDate: startDate.toISOString(),
-      endDate: endDate.toISOString(),
+      minAmount: plan.min_amount,
+      maxAmount: plan.max_amount,
+      'Return On Investment': plan.roi_percentage / 100,
+      durationValue: plan.duration_months,
+      durationUnit: 'months',
+      startDate: new Date().toISOString(),
+      maturityDate: new Date(Date.now() + plan.duration_months * 30 * 24 * 60 * 60 * 1000).toISOString(),
       status: 'active',
-      expectedReturn,
+      payoutAmount: 0,
+      InvestmentBalance: amount,
+      InvestmentID: `INV_${Date.now()}`,
+      InvestmentType: plan.name,
+      'Expected Profit': amount * (plan.roi_percentage / 100),
+      payment_method: 'wallet',
+      payment_status: 'completed'
     };
 
-    // Create investment and transaction in database
     try {
-      const { investment: createdInvestment, transaction: createdTransaction } = await databaseService.createInvestment(user.id, plan, newInvestment, amount);
-
-      dispatch({ type: 'ADD_INVESTMENT', payload: createdInvestment });
-      dispatch({ type: 'ADD_TRANSACTION', payload: createdTransaction });
+      const createdInvestment = await DatabaseService.createInvestment(investment);
+      if (createdInvestment) {
+        dispatch({ type: 'ADD_INVESTMENT', payload: createdInvestment });
+      }
     } catch (error: any) {
       console.error('Error creating investment:', error);
       throw error;
     }
   };
 
-  const applyForLoan = async (amount: number, termMonths: number) => {
-    if (!user) throw new Error('User not authenticated');
+  const applyForLoan = async (amount: number, durationMonths: number) => {
+    if (!authUser) throw new Error('User not authenticated');
 
-    const loan: Omit<Loan, 'id'> = {
-      amount,
-      termMonths,
-      interestRate: 0.15, // 15% annual rate
+    const interestRate = 0.15; // 15% annual rate
+    const totalPayable = amount * (1 + interestRate * (durationMonths / 12));
+
+    const loan: Omit<Loan, 'id' | 'created_at' | 'loanID'> = {
+      user_Id: authUser.id,
+      loanAmount: amount,
+      interestRate,
+      durationValue: durationMonths,
+      durationUnit: 'months',
       status: 'pending',
-      disbursedToAccountId: '', // Will be set when approved
-      createdAt: new Date().toISOString(),
+      applicationDate: new Date().toISOString(),
+      dueDate: new Date(Date.now() + durationMonths * 30 * 24 * 60 * 60 * 1000).toISOString(),
+      totalPayable,
+      amountRepaid: 0
     };
 
     try {
-      const createdLoan = await databaseService.applyForLoan(user.id, loan);
-      dispatch({ type: 'ADD_LOAN', payload: createdLoan });
+      const createdLoan = await DatabaseService.applyForLoan(loan);
+      if (createdLoan) {
+        dispatch({ type: 'ADD_LOAN', payload: createdLoan });
+      }
     } catch (error: any) {
       console.error('Error applying for loan:', error);
       throw error;
@@ -287,21 +316,33 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const depositFunds = async (amount: number) => {
-    if (!user) throw new Error('User not authenticated');
+    if (!authUser) throw new Error('User not authenticated');
 
-    // This would integrate with payment gateway
-    // For now, simulate successful deposit
-    const transaction: Omit<Transaction, 'id'> = {
+    const transaction: Omit<Transaction, 'id' | 'created_at'> = {
+      user_Id: authUser.id,
       type: 'deposit',
+      method: 'bank_transfer',
       amount,
-      date: new Date().toISOString(),
-      status: 'pending',
-      description: `Deposit of $${amount}`,
+      status: 'completed',
+      referenceCode: `DEP_${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      currency: 'USD',
+      'Sender Account': 'External Bank',
+      receipientAccount: 'Wallet',
+      transactionID: `TXN_${Date.now()}`
     };
 
     try {
-      const createdTransaction = await databaseService.createTransaction(user.id, transaction);
-      dispatch({ type: 'ADD_TRANSACTION', payload: createdTransaction });
+      const createdTransaction = await DatabaseService.createTransaction(transaction);
+      if (createdTransaction) {
+        dispatch({ type: 'ADD_TRANSACTION', payload: createdTransaction });
+        // Update wallet balance
+        if (state.wallet) {
+          const updatedWallet = { ...state.wallet, balance: (state.wallet.balance || 0) + amount };
+          await DatabaseService.updateWalletBalance(authUser.id, updatedWallet.balance);
+          dispatch({ type: 'UPDATE_WALLET', payload: updatedWallet });
+        }
+      }
     } catch (error: any) {
       console.error('Error depositing funds:', error);
       throw error;
@@ -309,29 +350,56 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const withdrawFunds = async (amount: number) => {
-    if (!user) throw new Error('User not authenticated');
+    if (!authUser) throw new Error('User not authenticated');
+    if (!state.wallet || state.wallet.balance < amount) {
+      throw new Error('Insufficient balance');
+    }
 
-    const transaction: Omit<Transaction, 'id'> = {
-      type: 'transfer',
+    const transaction: Omit<Transaction, 'id' | 'created_at'> = {
+      user_Id: authUser.id,
+      type: 'withdrawal',
+      method: 'bank_transfer',
       amount: -amount,
-      date: new Date().toISOString(),
       status: 'pending',
-      description: `Withdrawal of $${amount}`,
+      referenceCode: `WTH_${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      currency: 'USD',
+      'Sender Account': 'Wallet',
+      receipientAccount: 'External Bank',
+      transactionID: `TXN_${Date.now()}`
     };
 
     try {
-      const createdTransaction = await databaseService.createTransaction(user.id, transaction);
-      dispatch({ type: 'ADD_TRANSACTION', payload: createdTransaction });
+      const createdTransaction = await DatabaseService.createTransaction(transaction);
+      if (createdTransaction) {
+        dispatch({ type: 'ADD_TRANSACTION', payload: createdTransaction });
+        // Update wallet balance
+        const updatedWallet = { ...state.wallet, balance: state.wallet.balance - amount };
+        await DatabaseService.updateWalletBalance(authUser.id, updatedWallet.balance);
+        dispatch({ type: 'UPDATE_WALLET', payload: updatedWallet });
+      }
     } catch (error: any) {
       console.error('Error withdrawing funds:', error);
       throw error;
     }
   };
 
+  const markNotificationAsRead = async (notificationId: number) => {
+    try {
+      const success = await DatabaseService.markNotificationAsRead(notificationId);
+      if (success) {
+        dispatch({ type: 'MARK_NOTIFICATION_READ', payload: notificationId });
+      }
+    } catch (error: any) {
+      console.error('Error marking notification as read:', error);
+      throw error;
+    }
+  };
+
   const contextValue = useMemo<AppContextType>(
     () => ({
-      state,
-      user,
+      ...state,
+      authUser,
       loading,
       dataLoading,
       error,
@@ -343,8 +411,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       depositFunds,
       withdrawFunds,
       loadUserData,
+      markNotificationAsRead,
     }),
-    [state, user, loading, dataLoading, error]
+    [state, authUser, loading, dataLoading, error]
   );
 
   return <AppContext.Provider value={contextValue}>{children}</AppContext.Provider>;
@@ -353,7 +422,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 export const useAppState = (): AppContextType => {
   const context = useContext(AppContext);
   if (!context) {
-    throw new Error('useAppState must be used within AppStateProvider');
+    throw new Error('useAppState must be used within an AppStateProvider');
   }
   return context;
 };
