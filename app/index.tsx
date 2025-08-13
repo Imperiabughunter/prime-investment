@@ -1,315 +1,276 @@
 
-import React, { useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  ActivityIndicator,
-} from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, RefreshControl, Alert } from 'react-native';
 import { router } from 'expo-router';
 import { useAppState } from '../state/AppState';
-import { Icon } from '../components/Icon';
-import { ActivityChart } from '../components/ActivityChart';
+import { colors, commonStyles } from '../styles/commonStyles';
+import Icon from '../components/Icon';
+import LoadingSpinner from '../components/LoadingSpinner';
+import ErrorBoundary from '../components/ErrorBoundary';
+import { StyleSheet } from 'react-native';
 
-export default function MainScreen() {
+export default function Dashboard() {
   const { state, user, loading, loadUserData } = useAppState();
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (user && !loading) {
-      loadUserData();
+    if (!user) {
+      router.replace('/signin');
+      return;
     }
+
+    loadData();
   }, [user]);
 
+  const loadData = async () => {
+    try {
+      setError(null);
+      await loadUserData();
+    } catch (error: any) {
+      setError(error.message);
+      Alert.alert('Error', 'Failed to load data. Please try again.');
+    }
+  };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await loadData();
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#007AFF" />
-        <Text style={styles.loadingText}>Loading...</Text>
-      </View>
-    );
+    return <LoadingSpinner message="Loading your dashboard..." />;
   }
 
   if (!user) {
-    return (
-      <View style={styles.authContainer}>
-        <Text style={styles.welcomeTitle}>Welcome to Natively</Text>
-        <Text style={styles.welcomeSubtitle}>
-          Your personal finance companion
-        </Text>
-        
-        <TouchableOpacity
-          style={styles.primaryButton}
-          onPress={() => router.push('/signin')}
-        >
-          <Text style={styles.primaryButtonText}>Sign In</Text>
-        </TouchableOpacity>
+    return null; // Will redirect to signin
+  }
 
-        <TouchableOpacity
-          style={styles.secondaryButton}
-          onPress={() => router.push('/signup')}
-        >
-          <Text style={styles.secondaryButtonText}>Create Account</Text>
+  if (error && state.investments.length === 0) {
+    return (
+      <View style={styles.errorContainer}>
+        <Icon name="alert-circle" size={48} color={colors.error} />
+        <Text style={styles.errorTitle}>Unable to Load Data</Text>
+        <Text style={styles.errorMessage}>{error}</Text>
+        <TouchableOpacity style={styles.retryButton} onPress={loadData}>
+          <Text style={styles.retryButtonText}>Try Again</Text>
         </TouchableOpacity>
       </View>
     );
   }
 
-  const totalBalance = state.accounts.reduce((sum, account) => sum + account.balance, 0);
-  const activeInvestments = state.investments.filter(inv => inv.status === 'active').length;
-  const pendingLoans = state.loans.filter(loan => loan.status === 'pending').length;
+  const totalInvestments = state.investments.reduce((sum, inv) => sum + inv.amount, 0);
+  const totalExpectedReturns = state.investments.reduce((sum, inv) => sum + inv.expectedReturn, 0);
+  const activeLoans = state.loans.filter(loan => loan.status === 'approved').length;
+  const recentTransactions = state.transactions.slice(0, 5);
 
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.greeting}>
-          Welcome back, {user.profile?.display_name || 'User'}!
-        </Text>
-        <Text style={styles.balance}>${totalBalance.toFixed(2)}</Text>
-        <Text style={styles.balanceLabel}>Total Balance</Text>
-      </View>
-
-      <View style={styles.statsContainer}>
-        <View style={styles.statCard}>
-          <Text style={styles.statNumber}>{activeInvestments}</Text>
-          <Text style={styles.statLabel}>Active Investments</Text>
+    <ErrorBoundary>
+      <ScrollView 
+        style={styles.container}
+        contentContainerStyle={styles.contentContainer}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+        }
+      >
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={styles.welcomeText}>Welcome back!</Text>
+          <Text style={styles.emailText}>{user.email}</Text>
         </View>
-        <View style={styles.statCard}>
-          <Text style={styles.statNumber}>{pendingLoans}</Text>
-          <Text style={styles.statLabel}>Pending Loans</Text>
-        </View>
-        <View style={styles.statCard}>
-          <Text style={styles.statNumber}>{state.transactions.length}</Text>
-          <Text style={styles.statLabel}>Transactions</Text>
-        </View>
-      </View>
 
-      <View style={styles.chartContainer}>
-        <Text style={styles.sectionTitle}>Activity Overview</Text>
-        <ActivityChart transactions={state.transactions} />
-      </View>
-
-      <View style={styles.actionsContainer}>
-        <Text style={styles.sectionTitle}>Quick Actions</Text>
-        
-        <View style={styles.actionGrid}>
-          <TouchableOpacity
-            style={styles.actionCard}
-            onPress={() => router.push('/investments')}
-          >
-            <Icon name="trending-up" size={24} color="#007AFF" />
-            <Text style={styles.actionText}>Investments</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.actionCard}
-            onPress={() => router.push('/loan')}
-          >
-            <Icon name="dollar-sign" size={24} color="#007AFF" />
-            <Text style={styles.actionText}>Loans</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.actionCard}
-            onPress={() => router.push('/transfer')}
-          >
-            <Icon name="send" size={24} color="#007AFF" />
-            <Text style={styles.actionText}>Transfer</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.actionCard}
-            onPress={() => router.push('/calculator')}
-          >
-            <Icon name="calculator" size={24} color="#007AFF" />
-            <Text style={styles.actionText}>Calculator</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      <View style={styles.recentContainer}>
-        <Text style={styles.sectionTitle}>Recent Transactions</Text>
-        {state.transactions.slice(0, 3).map((transaction, index) => (
-          <View key={transaction.id} style={styles.transactionItem}>
-            <View style={styles.transactionInfo}>
-              <Text style={styles.transactionDesc}>{transaction.description}</Text>
-              <Text style={styles.transactionDate}>
-                {new Date(transaction.date).toLocaleDateString()}
-              </Text>
+        {/* Quick Stats */}
+        <View style={commonStyles.card}>
+          <Text style={styles.sectionTitle}>Portfolio Overview</Text>
+          <View style={styles.statsGrid}>
+            <View style={styles.statItem}>
+              <Text style={styles.statValue}>${totalInvestments.toFixed(2)}</Text>
+              <Text style={styles.statLabel}>Invested</Text>
             </View>
-            <Text
-              style={[
-                styles.transactionAmount,
-                transaction.amount > 0 ? styles.positive : styles.negative,
-              ]}
-            >
-              ${Math.abs(transaction.amount).toFixed(2)}
-            </Text>
+            <View style={styles.statItem}>
+              <Text style={styles.statValue}>${totalExpectedReturns.toFixed(2)}</Text>
+              <Text style={styles.statLabel}>Expected Returns</Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={styles.statValue}>{state.investments.length}</Text>
+              <Text style={styles.statLabel}>Investments</Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={styles.statValue}>{activeLoans}</Text>
+              <Text style={styles.statLabel}>Active Loans</Text>
+            </View>
           </View>
-        ))}
+        </View>
 
-        <TouchableOpacity
-          onPress={() => router.push('/history')}
-          style={styles.viewAllButton}
-        >
-          <Text style={styles.viewAllText}>View All Transactions</Text>
-        </TouchableOpacity>
-      </View>
-    </ScrollView>
+        {/* Quick Actions */}
+        <View style={commonStyles.card}>
+          <Text style={styles.sectionTitle}>Quick Actions</Text>
+          <View style={styles.actionsGrid}>
+            <TouchableOpacity 
+              style={styles.actionButton} 
+              onPress={() => router.push('/investments')}
+              activeOpacity={0.8}
+            >
+              <Icon name="trending-up" size={24} color={colors.primary} />
+              <Text style={styles.actionText}>Invest</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.actionButton} 
+              onPress={() => router.push('/loan')}
+              activeOpacity={0.8}
+            >
+              <Icon name="card" size={24} color={colors.primary} />
+              <Text style={styles.actionText}>Loan</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.actionButton} 
+              onPress={() => router.push('/transfer')}
+              activeOpacity={0.8}
+            >
+              <Icon name="swap-horizontal" size={24} color={colors.primary} />
+              <Text style={styles.actionText}>Transfer</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.actionButton} 
+              onPress={() => router.push('/calculator')}
+              activeOpacity={0.8}
+            >
+              <Icon name="calculator" size={24} color={colors.primary} />
+              <Text style={styles.actionText}>Calculate</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Recent Transactions */}
+        <View style={commonStyles.card}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Recent Transactions</Text>
+            <TouchableOpacity onPress={() => router.push('/history')}>
+              <Text style={styles.viewAllText}>View All</Text>
+            </TouchableOpacity>
+          </View>
+          {recentTransactions.length === 0 ? (
+            <Text style={styles.emptyText}>No transactions yet</Text>
+          ) : (
+            recentTransactions.map((transaction) => (
+              <View key={transaction.id} style={styles.transactionItem}>
+                <View style={styles.transactionInfo}>
+                  <Text style={styles.transactionDescription} numberOfLines={1}>
+                    {transaction.description}
+                  </Text>
+                  <Text style={styles.transactionDate}>
+                    {new Date(transaction.date).toLocaleDateString()}
+                  </Text>
+                </View>
+                <Text 
+                  style={[
+                    styles.transactionAmount,
+                    { color: transaction.amount >= 0 ? colors.success : colors.error }
+                  ]}
+                >
+                  {transaction.amount >= 0 ? '+' : ''}${Math.abs(transaction.amount).toFixed(2)}
+                </Text>
+              </View>
+            ))
+          )}
+        </View>
+
+        {error && (
+          <View style={styles.errorBanner}>
+            <Icon name="alert-circle" size={16} color={colors.error} />
+            <Text style={styles.errorBannerText}>Some data may be outdated</Text>
+          </View>
+        )}
+      </ScrollView>
+    </ErrorBoundary>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: colors.background,
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#f5f5f5',
-  },
-  loadingText: {
-    marginTop: 10,
-    fontSize: 16,
-    color: '#666',
-  },
-  authContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-    backgroundColor: '#f5f5f5',
-  },
-  welcomeTitle: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: 10,
-    color: '#333',
-  },
-  welcomeSubtitle: {
-    fontSize: 16,
-    textAlign: 'center',
-    color: '#666',
-    marginBottom: 40,
-  },
-  primaryButton: {
-    backgroundColor: '#007AFF',
-    borderRadius: 8,
-    padding: 15,
-    width: '100%',
-    alignItems: 'center',
-    marginBottom: 15,
-  },
-  primaryButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  secondaryButton: {
-    borderWidth: 1,
-    borderColor: '#007AFF',
-    borderRadius: 8,
-    padding: 15,
-    width: '100%',
-    alignItems: 'center',
-  },
-  secondaryButtonText: {
-    color: '#007AFF',
-    fontSize: 16,
-    fontWeight: '600',
+  contentContainer: {
+    padding: 16,
   },
   header: {
-    backgroundColor: 'white',
-    padding: 20,
-    alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 24,
   },
-  greeting: {
-    fontSize: 18,
-    color: '#666',
-    marginBottom: 10,
-  },
-  balance: {
-    fontSize: 36,
+  welcomeText: {
+    fontSize: 28,
     fontWeight: 'bold',
-    color: '#333',
+    color: colors.text,
+    marginBottom: 4,
   },
-  balanceLabel: {
-    fontSize: 14,
-    color: '#999',
-  },
-  statsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    marginBottom: 20,
-  },
-  statCard: {
-    backgroundColor: 'white',
-    padding: 15,
-    borderRadius: 8,
-    alignItems: 'center',
-    flex: 1,
-    marginHorizontal: 5,
-  },
-  statNumber: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#007AFF',
-  },
-  statLabel: {
-    fontSize: 12,
-    color: '#666',
-    textAlign: 'center',
-    marginTop: 5,
-  },
-  chartContainer: {
-    backgroundColor: 'white',
-    margin: 20,
-    padding: 20,
-    borderRadius: 8,
+  emailText: {
+    fontSize: 16,
+    color: colors.textSecondary,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '600',
-    color: '#333',
-    marginBottom: 15,
+    color: colors.text,
+    marginBottom: 16,
   },
-  actionsContainer: {
-    backgroundColor: 'white',
-    margin: 20,
-    padding: 20,
-    borderRadius: 8,
-  },
-  actionGrid: {
+  sectionHeader: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     justifyContent: 'space-between',
-  },
-  actionCard: {
-    width: '48%',
-    padding: 15,
-    backgroundColor: '#f8f9fa',
-    borderRadius: 8,
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 16,
   },
-  actionText: {
-    fontSize: 14,
-    color: '#333',
-    marginTop: 8,
+  viewAllText: {
+    color: colors.primary,
+    fontSize: 16,
     fontWeight: '500',
   },
-  recentContainer: {
-    backgroundColor: 'white',
-    margin: 20,
+  statsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 16,
+  },
+  statItem: {
+    flex: 1,
+    minWidth: '40%',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+  },
+  statValue: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: colors.primary,
+    marginBottom: 4,
+  },
+  statLabel: {
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
+  actionsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 16,
+  },
+  actionButton: {
+    flex: 1,
+    minWidth: '40%',
+    alignItems: 'center',
     padding: 20,
-    borderRadius: 8,
-    marginBottom: 40,
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  actionText: {
+    marginTop: 8,
+    fontSize: 16,
+    fontWeight: '500',
+    color: colors.text,
   },
   transactionItem: {
     flexDirection: 'row',
@@ -317,38 +278,72 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: colors.border,
   },
   transactionInfo: {
     flex: 1,
   },
-  transactionDesc: {
+  transactionDescription: {
     fontSize: 16,
-    color: '#333',
+    color: colors.text,
+    marginBottom: 2,
   },
   transactionDate: {
-    fontSize: 12,
-    color: '#999',
-    marginTop: 2,
+    fontSize: 14,
+    color: colors.textSecondary,
   },
   transactionAmount: {
     fontSize: 16,
     fontWeight: '600',
   },
-  positive: {
-    color: '#4CAF50',
-  },
-  negative: {
-    color: '#F44336',
-  },
-  viewAllButton: {
-    marginTop: 15,
-    padding: 10,
-    alignItems: 'center',
-  },
-  viewAllText: {
-    color: '#007AFF',
+  emptyText: {
+    textAlign: 'center',
+    color: colors.textSecondary,
     fontSize: 16,
-    fontWeight: '500',
+    paddingVertical: 20,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+    backgroundColor: colors.background,
+  },
+  errorTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  errorMessage: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  retryButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: colors.background,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.error + '20',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 16,
+  },
+  errorBannerText: {
+    marginLeft: 8,
+    color: colors.error,
+    fontSize: 14,
   },
 });

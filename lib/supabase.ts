@@ -1,36 +1,87 @@
 
 import { createClient } from '@supabase/supabase-js';
-import Constants from 'expo-constants';
+import { validateEnv } from '../utils/envValidation';
 
-const supabaseUrl = Constants.expoConfig?.extra?.supabaseUrl || process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://isyrvlartesxfygagbii.supabase.co';
-const supabaseAnonKey = Constants.expoConfig?.extra?.supabaseAnonKey || process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlzeXJ2bGFydGVzeGZ5Z2FnYmlpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDI5MTAxNTAsImV4cCI6MjA1ODQ4NjE1MH0.8lYQMgJxm_IJzxAgE52luWI-RfhK9Nu5CiQNYR9Paks';
+// Validate environment variables
+const env = validateEnv();
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Missing Supabase environment variables');
-}
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    storage: {
-      getItem: (key: string) => {
-        if (typeof localStorage !== 'undefined') {
-          return localStorage.getItem(key);
-        }
-        return null;
-      },
-      setItem: (key: string, value: string) => {
-        if (typeof localStorage !== 'undefined') {
-          localStorage.setItem(key, value);
-        }
-      },
-      removeItem: (key: string) => {
-        if (typeof localStorage !== 'undefined') {
-          localStorage.removeItem(key);
-        }
+export const supabase = createClient(
+  env.EXPO_PUBLIC_SUPABASE_URL,
+  env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
+  {
+    auth: {
+      autoRefreshToken: true,
+      persistSession: true,
+      detectSessionInUrl: false,
+    },
+    global: {
+      headers: {
+        'X-Client-Info': 'prime-investment-app',
       },
     },
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: false,
-  },
-});
+    db: {
+      schema: 'public',
+    },
+  }
+);
+
+// Enhanced error handling for Supabase operations
+export const handleSupabaseError = (error: any, operation: string) => {
+  console.error(`Supabase ${operation} error:`, error);
+  
+  if (error?.code === 'PGRST301') {
+    throw new Error('Resource not found');
+  }
+  
+  if (error?.code === '23505') {
+    throw new Error('This record already exists');
+  }
+  
+  if (error?.message?.includes('JWT')) {
+    throw new Error('Session expired. Please sign in again.');
+  }
+  
+  throw new Error(error?.message || `Failed to ${operation}`);
+};
+
+// Database schema types for better type safety
+export interface DbUser {
+  id: string;
+  email: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DbInvestment {
+  id: string;
+  user_id: string;
+  plan_id: string;
+  amount: number;
+  start_date: string;
+  end_date: string;
+  status: string;
+  expected_return: number;
+  created_at: string;
+}
+
+export interface DbTransaction {
+  id: string;
+  user_id: string;
+  type: string;
+  amount: number;
+  status: string;
+  description: string;
+  created_at: string;
+  meta?: any;
+}
+
+export interface DbLoan {
+  id: string;
+  user_id: string;
+  amount: number;
+  term_months: number;
+  interest_rate: number;
+  status: string;
+  created_at: string;
+  approved_at?: string;
+}

@@ -1,0 +1,214 @@
+-- WARNING: This schema is for context only and is not meant to be run.
+-- Table order and constraints may not be valid for execution.
+
+CREATE TABLE public.Admin (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  user_id uuid,
+  permissions ARRAY,
+  IsActive boolean DEFAULT true,
+  lastLogin timestamp without time zone,
+  updatedAt timestamp without time zone,
+  CONSTRAINT Admin_pkey PRIMARY KEY (id),
+  CONSTRAINT Admin_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+);
+CREATE TABLE public.Investment (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  user_ID uuid DEFAULT auth.uid(),
+  amount numeric,
+  minAmount numeric,
+  maxAmount numeric,
+  Return On Investment double precision,
+  durationValue numeric,
+  durationUnit text,
+  startDate timestamp without time zone,
+  maturityDate timestamp without time zone,
+  status text,
+  payoutAmount numeric DEFAULT '0'::numeric,
+  InvestmentBalance numeric DEFAULT '0'::numeric,
+  InvestmentID text,
+  InvestmentType text,
+  Expected Profit numeric,
+  payment_method text DEFAULT 'wallet'::text,
+  payment_gateway_reference text,
+  payment_status text DEFAULT 'pending'::text,
+  CONSTRAINT Investment_pkey PRIMARY KEY (id),
+  CONSTRAINT Investment_user_ID_fkey FOREIGN KEY (user_ID) REFERENCES auth.users(id)
+);
+CREATE TABLE public.KYC (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  full_name text,
+  email text,
+  phone_number bigint,
+  country text,
+  city text,
+  Address text,
+  CONSTRAINT KYC_pkey PRIMARY KEY (id),
+  CONSTRAINT KYC_email_fkey FOREIGN KEY (email) REFERENCES public.users(email)
+);
+CREATE TABLE public.Loan (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  user_Id uuid NOT NULL DEFAULT auth.uid(),
+  loanAmount numeric NOT NULL DEFAULT '0'::numeric,
+  interestRate double precision,
+  durationValue numeric,
+  durationUnit text,
+  status text,
+  applicationDate timestamp without time zone,
+  approvalDate timestamp without time zone,
+  dueDate timestamp without time zone,
+  totalPayable numeric,
+  amountRepaid numeric DEFAULT '0'::numeric,
+  loanID uuid DEFAULT gen_random_uuid(),
+  CONSTRAINT Loan_pkey PRIMARY KEY (id),
+  CONSTRAINT Loan_user_Id_fkey FOREIGN KEY (user_Id) REFERENCES auth.users(id)
+);
+CREATE TABLE public.Loan Repayment (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  amount numeric NOT NULL,
+  date timestamp without time zone,
+  method text,
+  loan_balance numeric NOT NULL DEFAULT '0'::numeric,
+  CONSTRAINT Loan Repayment_pkey PRIMARY KEY (id),
+  CONSTRAINT Loan Repayment_id_fkey FOREIGN KEY (id) REFERENCES public.Loan(id)
+);
+CREATE TABLE public.Notifications (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  user_Id uuid DEFAULT auth.uid(),
+  title text,
+  message text,
+  Is_Read boolean DEFAULT false,
+  created_At timestamp without time zone,
+  type text DEFAULT 'info'::text,
+  action_url text,
+  CONSTRAINT Notifications_pkey PRIMARY KEY (id),
+  CONSTRAINT Notifications_user_Id_fkey FOREIGN KEY (user_Id) REFERENCES auth.users(id)
+);
+CREATE TABLE public.Orders (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  orderID uuid DEFAULT gen_random_uuid(),
+  type text,
+  createdDate timestamp without time zone,
+  status text,
+  amount numeric,
+  user_id uuid DEFAULT auth.uid(),
+  transactionID character varying,
+  description text,
+  CONSTRAINT Orders_pkey PRIMARY KEY (id),
+  CONSTRAINT Orders_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+);
+CREATE TABLE public.Settings (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  key text,
+  value text,
+  CONSTRAINT Settings_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.Transactions (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  user_Id uuid DEFAULT auth.uid(),
+  type text,
+  method text,
+  amount numeric,
+  status text,
+  referenceCode character varying,
+  timestamp timestamp without time zone,
+  currency text,
+  Sender Account text,
+  receipientAccount text,
+  transactionID character varying,
+  payment_gateway text,
+  crypto_currency text,
+  gateway_transaction_id text,
+  payment_confirmation_code text,
+  CONSTRAINT Transactions_pkey PRIMARY KEY (id),
+  CONSTRAINT Transactions_user_Id_fkey FOREIGN KEY (user_Id) REFERENCES auth.users(id)
+);
+CREATE TABLE public.Virtual Account (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  user_id uuid DEFAULT auth.uid(),
+  accountNumber numeric,
+  bankName text,
+  accountName text,
+  balance numeric DEFAULT '0'::numeric,
+  currency text,
+  accountType text,
+  status text,
+  updatedAt timestamp without time zone,
+  createdByAdmin boolean,
+  lastTransaction timestamp without time zone,
+  linkedToWallet boolean,
+  AccountId text,
+  CONSTRAINT Virtual Account_pkey PRIMARY KEY (id),
+  CONSTRAINT Virtual Account_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+);
+CREATE TABLE public.Wallet (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  user_Id uuid DEFAULT auth.uid(),
+  balance numeric,
+  updatedAt timestamp without time zone,
+  CONSTRAINT Wallet_pkey PRIMARY KEY (id),
+  CONSTRAINT Wallet_user_Id_fkey FOREIGN KEY (user_Id) REFERENCES auth.users(id)
+);
+CREATE TABLE public.admin_settings (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  setting_key text NOT NULL UNIQUE,
+  setting_value jsonb,
+  description text,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT admin_settings_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.investment_plans (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  name text NOT NULL,
+  description text,
+  min_amount numeric NOT NULL,
+  max_amount numeric NOT NULL,
+  roi_percentage numeric NOT NULL,
+  duration_months integer NOT NULL,
+  risk_level text CHECK (risk_level = ANY (ARRAY['Low'::text, 'Medium'::text, 'High'::text])),
+  status text DEFAULT 'active'::text,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT investment_plans_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.investment_types (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  created_at timestamp with time zone NOT NULL,
+  name text,
+  description text,
+  minAmount numeric,
+  maxAmount numeric,
+  minDurationValue numeric,
+  maxDurationValue numeric,
+  minDurationUnit text,
+  maxDurationUnit text,
+  defaultROI double precision,
+  compoundfrequency text,
+  status text,
+  CONSTRAINT investment_types_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.users (
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  display_name text DEFAULT ''::text,
+  email text NOT NULL DEFAULT ''::text UNIQUE,
+  photo_url text DEFAULT ''::text,
+  walletBalance numeric NOT NULL DEFAULT '0'::numeric,
+  user_id uuid NOT NULL DEFAULT auth.uid() UNIQUE,
+  role text DEFAULT ''::text,
+  Investment ARRAY,
+  fcm_token text,
+  Investment Balance numeric NOT NULL DEFAULT '0'::numeric,
+  status text NOT NULL DEFAULT 'Inactive'::text,
+  CONSTRAINT users_pkey PRIMARY KEY (user_id),
+  CONSTRAINT users_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+);

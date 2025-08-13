@@ -1,92 +1,260 @@
 
-import { StyleSheet, ViewStyle, TextStyle } from 'react-native';
+import { StyleSheet, Platform } from 'react-native';
 
 export const colors = {
-  primary: '#162456',
-  secondary: '#193cb8',
-  accent: '#64B5F6',
-  background: '#101824',
-  backgroundAlt: '#162133',
-  text: '#e3e3e3',
-  grey: '#90CAF9',
-  card: '#193cb8',
+  primary: '#007AFF',
+  primaryDark: '#0056CC',
+  secondary: '#5856D6',
+  background: '#000000',
+  surface: '#1C1C1E',
+  card: '#2C2C2E',
+  text: '#FFFFFF',
+  textSecondary: '#8E8E93',
+  border: '#38383A',
+  error: '#FF3B30',
+  warning: '#FF9500',
+  success: '#34C759',
+  accent: '#FF2D92',
+  
+  // Additional colors for better UI
+  overlay: 'rgba(0, 0, 0, 0.5)',
+  disabled: '#48484A',
+  placeholder: '#48484A',
+  divider: '#48484A',
 };
 
-export const buttonStyles = StyleSheet.create({
-  instructionsButton: {
-    backgroundColor: colors.primary,
-    alignSelf: 'center',
-    width: '100%',
+export const spacing = {
+  xs: 4,
+  sm: 8,
+  md: 16,
+  lg: 24,
+  xl: 32,
+  xxl: 48,
+};
+
+export const borderRadius = {
+  sm: 6,
+  md: 12,
+  lg: 16,
+  xl: 24,
+  round: 999,
+};
+
+export const typography = {
+  title: {
+    fontSize: 28,
+    fontWeight: 'bold' as const,
+    lineHeight: 34,
   },
-  backButton: {
-    backgroundColor: colors.backgroundAlt,
-    alignSelf: 'center',
-    width: '100%',
+  subtitle: {
+    fontSize: 22,
+    fontWeight: '600' as const,
+    lineHeight: 28,
+  },
+  heading: {
+    fontSize: 20,
+    fontWeight: '600' as const,
+    lineHeight: 26,
+  },
+  body: {
+    fontSize: 16,
+    fontWeight: '400' as const,
+    lineHeight: 22,
+  },
+  caption: {
+    fontSize: 14,
+    fontWeight: '400' as const,
+    lineHeight: 18,
+  },
+  small: {
+    fontSize: 12,
+    fontWeight: '400' as const,
+    lineHeight: 16,
+  },
+};
+
+export const shadows = Platform.select({
+  ios: {
+    small: {
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+    },
+    medium: {
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.15,
+      shadowRadius: 8,
+    },
+    large: {
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.2,
+      shadowRadius: 16,
+    },
+  },
+  android: {
+    small: {
+      elevation: 2,
+    },
+    medium: {
+      elevation: 4,
+    },
+    large: {
+      elevation: 8,
+    },
   },
 });
 
 export const commonStyles = StyleSheet.create({
-  wrapper: {
-    backgroundColor: colors.background,
-    width: '100%',
-    height: '100%',
-  },
   container: {
     flex: 1,
     backgroundColor: colors.background,
-    width: '100%',
-    height: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
   },
-  content: {
-    flex: 1,
+  
+  card: {
+    backgroundColor: colors.card,
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    ...shadows?.medium,
+  },
+  
+  surface: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+  },
+  
+  button: {
+    backgroundColor: colors.primary,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: borderRadius.md,
     alignItems: 'center',
     justifyContent: 'center',
-    maxWidth: 800,
-    width: '100%',
+    minHeight: 48,
   },
-  title: {
-    fontSize: 24,
-    fontWeight: '800',
-    textAlign: 'center',
+  
+  buttonText: {
+    color: colors.background,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  
+  buttonSecondary: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  
+  buttonSecondaryText: {
+    color: colors.primary,
+  },
+  
+  buttonDisabled: {
+    backgroundColor: colors.disabled,
+  },
+  
+  buttonDisabledText: {
+    color: colors.textSecondary,
+  },
+  
+  input: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: borderRadius.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    fontSize: 16,
     color: colors.text,
-    marginBottom: 10,
-    fontFamily: 'Inter_700Bold',
+    minHeight: 48,
   },
-  text: {
+  
+  inputFocused: {
+    borderColor: colors.primary,
+  },
+  
+  inputError: {
+    borderColor: colors.error,
+  },
+  
+  label: {
     fontSize: 16,
     fontWeight: '500',
     color: colors.text,
-    marginBottom: 8,
-    lineHeight: 24,
+    marginBottom: spacing.sm,
+  },
+  
+  errorText: {
+    fontSize: 14,
+    color: colors.error,
+    marginTop: spacing.sm,
+  },
+  
+  successText: {
+    fontSize: 14,
+    color: colors.success,
+    marginTop: spacing.sm,
+  },
+  
+  divider: {
+    height: 1,
+    backgroundColor: colors.divider,
+    marginVertical: spacing.md,
+  },
+  
+  screenPadding: {
+    paddingHorizontal: spacing.md,
+  },
+  
+  centerContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  
+  spaceBetween: {
+    justifyContent: 'space-between',
+  },
+  
+  flexGrow: {
+    flexGrow: 1,
+  },
+  
+  flex1: {
+    flex: 1,
+  },
+  
+  textCenter: {
     textAlign: 'center',
-    fontFamily: 'Inter_400Regular',
   },
-  section: {
-    width: '100%',
-    alignItems: 'center',
-    paddingHorizontal: 20,
+  
+  textRight: {
+    textAlign: 'right',
   },
-  buttonContainer: {
-    width: '100%',
-    alignItems: 'center',
-    paddingHorizontal: 20,
+  
+  marginBottomMd: {
+    marginBottom: spacing.md,
   },
-  card: {
-    backgroundColor: colors.backgroundAlt,
-    borderColor: '#2d3a57',
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
-    marginVertical: 8,
-    width: '100%',
-    boxShadow: '0px 2px 3px rgba(0, 0, 0, 0.1)',
-    elevation: 2,
+  
+  marginTopMd: {
+    marginTop: spacing.md,
   },
-  icon: {
-    width: 60,
-    height: 60,
-    tintColor: 'white',
+  
+  paddingMd: {
+    padding: spacing.md,
+  },
+  
+  statusBar: {
+    height: Platform.OS === 'ios' ? 44 : 24,
+    backgroundColor: colors.background,
   },
 });
