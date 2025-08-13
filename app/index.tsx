@@ -1,58 +1,47 @@
+
 import React, { useEffect, useState } from 'react';
-import { View, Text, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, ActivityIndicator, Alert, TouchableOpacity } from 'react-native';
 import { router } from 'expo-router';
 import { useAppState } from '../state/AppState';
 import { colors } from '../styles/commonStyles';
 import { StyleSheet } from 'react-native';
 
 export default function MainScreen() {
-  const [isReady, setIsReady] = useState(false);
+  const { user, loading } = useAppState();
+  const [isInitialized, setIsInitialized] = useState(false);
 
   useEffect(() => {
-    // Simple initialization check
-    const initializeApp = async () => {
+    console.log('MainScreen - user:', user, 'loading:', loading);
+    
+    // Initialize the app
+    const init = async () => {
       try {
-        // Small delay to ensure everything is loaded
-        await new Promise(resolve => setTimeout(resolve, 100));
-        setIsReady(true);
+        await new Promise(resolve => setTimeout(resolve, 500));
+        setIsInitialized(true);
       } catch (error) {
-        console.error('App initialization error:', error);
-        Alert.alert('Error', 'Failed to initialize app');
+        console.error('Initialization error:', error);
       }
     };
 
-    initializeApp();
+    init();
   }, []);
 
-  if (!isReady) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={styles.loadingText}>Loading...</Text>
-      </View>
-    );
-  }
-
-  return <AuthenticatedApp />;
-}
-
-function AuthenticatedApp() {
-  const { state, user, loading } = useAppState();
-
   useEffect(() => {
-    console.log('AuthenticatedApp - user:', user, 'loading:', loading);
-
-    if (!loading && !user) {
-      console.log('No user found, redirecting to signin');
-      router.replace('/signin');
+    if (isInitialized && !loading) {
+      if (!user) {
+        console.log('No user, redirecting to signin');
+        router.replace('/signin');
+      }
     }
-  }, [user, loading]);
+  }, [user, loading, isInitialized]);
 
-  if (loading) {
+  if (!isInitialized || loading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={styles.loadingText}>Checking authentication...</Text>
+        <Text style={styles.loadingText}>
+          {!isInitialized ? 'Initializing...' : 'Loading...'}
+        </Text>
       </View>
     );
   }
@@ -61,20 +50,46 @@ function AuthenticatedApp() {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={styles.loadingText}>Redirecting...</Text>
+        <Text style={styles.loadingText}>Redirecting to sign in...</Text>
       </View>
     );
   }
 
-  // User is authenticated, show dashboard
-  return <Dashboard />;
-}
-
-function Dashboard() {
+  // User is authenticated - show simple dashboard
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Welcome to Prime Investment</Text>
-      <Text style={styles.subtitle}>Your dashboard is loading...</Text>
+      <Text style={styles.subtitle}>Hello, {user.email}!</Text>
+      
+      <View style={styles.buttonContainer}>
+        <TouchableOpacity 
+          style={styles.navButton} 
+          onPress={() => router.push('/investments')}
+        >
+          <Text style={styles.buttonText}>Investments</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={styles.navButton} 
+          onPress={() => router.push('/loan')}
+        >
+          <Text style={styles.buttonText}>Loans</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={styles.navButton} 
+          onPress={() => router.push('/calculator')}
+        >
+          <Text style={styles.buttonText}>Calculator</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={[styles.navButton, styles.debugButton]} 
+          onPress={() => router.push('/debug')}
+        >
+          <Text style={styles.buttonText}>Debug</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -99,15 +114,35 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   title: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: 'bold',
     color: colors.text,
     marginBottom: 16,
     textAlign: 'center',
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: 18,
     color: colors.textSecondary,
     textAlign: 'center',
+    marginBottom: 40,
+  },
+  buttonContainer: {
+    width: '100%',
+    maxWidth: 300,
+    gap: 16,
+  },
+  navButton: {
+    backgroundColor: colors.primary,
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  debugButton: {
+    backgroundColor: colors.warning,
+  },
+  buttonText: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
