@@ -1,434 +1,250 @@
+import React, { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
+import { Alert } from 'react-native';
+import { supabase } from '../lib/supabase';
+import { User, Session } from '@supabase/supabase-js';
+import { AppState, Investment, Loan, Transaction, KYC } from '../types';
 
-import React, { createContext, useContext, useMemo, useReducer, useEffect, useState } from 'react';
-import { 
-  User, 
-  Investment, 
-  InvestmentPlan, 
-  Transaction, 
-  Loan, 
-  VirtualAccount,
-  Wallet,
-  Notification 
-} from '../types';
-import { AuthService, AuthUser } from '../services/auth';
-import { DatabaseService } from '../services/database';
-
-export interface AppState {
+interface AppStateContextType {
+  state: AppState;
   user: User | null;
-  investments: Investment[];
-  investmentPlans: InvestmentPlan[];
-  transactions: Transaction[];
-  loans: Loan[];
-  virtualAccounts: VirtualAccount[];
-  wallet: Wallet | null;
-  notifications: Notification[];
-}
-
-type AppAction = 
-  | { type: 'SET_USER_DATA'; payload: Partial<AppState> }
-  | { type: 'ADD_INVESTMENT'; payload: Investment }
-  | { type: 'ADD_TRANSACTION'; payload: Transaction }
-  | { type: 'ADD_LOAN'; payload: Loan }
-  | { type: 'UPDATE_WALLET'; payload: Wallet }
-  | { type: 'MARK_NOTIFICATION_READ'; payload: number }
-  | { type: 'RESET_DATA' };
-
-export interface AppContextType extends AppState {
-  authUser: AuthUser | null;
+  session: Session | null;
   loading: boolean;
-  dataLoading: boolean;
-  error: string | null;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
-  createInvestment: (planId: string, amount: number) => Promise<void>;
-  applyForLoan: (amount: number, durationMonths: number) => Promise<void>;
-  depositFunds: (amount: number) => Promise<void>;
-  withdrawFunds: (amount: number) => Promise<void>;
-  loadUserData: (userId: string) => Promise<void>;
-  markNotificationAsRead: (notificationId: number) => Promise<void>;
+  loadUserData: () => Promise<void>;
+  createInvestment: (investment: Omit<Investment, 'id' | 'created_at' | 'user_ID'>) => Promise<void>;
+  applyForLoan: (loan: Omit<Loan, 'id' | 'created_at' | 'user_Id'>) => Promise<void>;
+  approveLoan: (loanId: string) => Promise<void>;
+  accounts: any[];
+  loans: Loan[];
 }
 
-const AppContext = createContext<AppContextType | null>(null);
+const initialState: AppState = {
+  investments: [],
+  loans: [],
+  transactions: [],
+  kyc: null,
+  balance: 0,
+};
 
-const appReducer = (state: AppState, action: AppAction): AppState => {
+type Action =
+  | { type: 'SET_INVESTMENTS'; payload: Investment[] }
+  | { type: 'SET_LOANS'; payload: Loan[] }
+  | { type: 'SET_TRANSACTIONS'; payload: Transaction[] }
+  | { type: 'SET_KYC'; payload: KYC | null }
+  | { type: 'SET_BALANCE'; payload: number }
+  | { type: 'RESET_STATE' };
+
+function appStateReducer(state: AppState, action: Action): AppState {
   switch (action.type) {
-    case 'SET_USER_DATA':
-      return {
-        ...state,
-        ...action.payload,
-      };
-    case 'ADD_INVESTMENT':
-      return {
-        ...state,
-        investments: [action.payload, ...state.investments],
-      };
-    case 'ADD_TRANSACTION':
-      return {
-        ...state,
-        transactions: [action.payload, ...state.transactions],
-      };
-    case 'ADD_LOAN':
-      return {
-        ...state,
-        loans: [action.payload, ...state.loans],
-      };
-    case 'UPDATE_WALLET':
-      return {
-        ...state,
-        wallet: action.payload,
-      };
-    case 'MARK_NOTIFICATION_READ':
-      return {
-        ...state,
-        notifications: state.notifications.map(notification =>
-          notification.id === action.payload
-            ? { ...notification, Is_Read: true }
-            : notification
-        ),
-      };
-    case 'RESET_DATA':
-      return {
-        user: null,
-        investments: [],
-        investmentPlans: [],
-        transactions: [],
-        loans: [],
-        virtualAccounts: [],
-        wallet: null,
-        notifications: [],
-      };
+    case 'SET_INVESTMENTS':
+      return { ...state, investments: action.payload };
+    case 'SET_LOANS':
+      return { ...state, loans: action.payload };
+    case 'SET_TRANSACTIONS':
+      return { ...state, transactions: action.payload };
+    case 'SET_KYC':
+      return { ...state, kyc: action.payload };
+    case 'SET_BALANCE':
+      return { ...state, balance: action.payload };
+    case 'RESET_STATE':
+      return initialState;
     default:
       return state;
   }
-};
+}
 
-const initialState: AppState = {
-  user: null,
-  investments: [],
-  investmentPlans: [],
-  transactions: [],
-  loans: [],
-  virtualAccounts: [],
-  wallet: null,
-  notifications: [],
-};
+const AppStateContext = createContext<AppStateContextType | undefined>(undefined);
 
-export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [state, dispatch] = useReducer(appReducer, initialState);
-  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [dataLoading, setDataLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const checkUser = async () => {
-    setLoading(true);
-    try {
-      const currentUser = await AuthService.getCurrentUser();
-      setAuthUser(currentUser);
-      if (currentUser) {
-        await loadUserData(currentUser.id);
-      }
-    } catch (error) {
-      console.error('Error checking user:', error);
-      setError('Failed to check user status.');
-    } finally {
-      setLoading(false);
-    }
-  };
+export function AppStateProvider({ children }: { children: ReactNode }) {
+  const [state, dispatch] = useReducer(appStateReducer, initialState);
+  const [user, setUser] = React.useState<User | null>(null);
+  const [session, setSession] = React.useState<Session | null>(null);
+  const [loading, setLoading] = React.useState(true);
 
   useEffect(() => {
-    checkUser();
-
-    const { data: { subscription } } = AuthService.onAuthStateChange((user) => {
-      setAuthUser(user);
-      if (user) {
-        loadUserData(user.id);
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session }, error }) => {
+      if (error) {
+        console.error('Error getting session:', error);
       } else {
-        dispatch({ type: 'RESET_DATA' });
+        console.log('Initial session:', session?.user?.email);
+        setSession(session);
+        setUser(session?.user ?? null);
+      }
+      setLoading(false);
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      console.log('Auth state changed:', _event, session?.user?.email);
+      setSession(session);
+      setUser(session?.user ?? null);
+      setLoading(false);
+
+      if (!session) {
+        dispatch({ type: 'RESET_STATE' });
       }
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  const loadUserData = async (userId?: string) => {
-    if (!userId && !authUser?.id) {
-      console.error('No user ID provided for loadUserData');
-      return;
-    }
-    
-    const userIdToUse = userId || authUser?.id!;
-    setDataLoading(true);
-    setError(null);
-
-    try {
-      const [
-        userProfile,
-        investments,
-        investmentPlans,
-        transactions,
-        loans,
-        virtualAccounts,
-        wallet,
-        notifications
-      ] = await Promise.all([
-        DatabaseService.getUserProfile(userIdToUse),
-        DatabaseService.getInvestments(userIdToUse),
-        DatabaseService.getInvestmentPlans(),
-        DatabaseService.getTransactions(userIdToUse),
-        DatabaseService.getLoans(userIdToUse),
-        DatabaseService.getVirtualAccounts(userIdToUse),
-        DatabaseService.getWallet(userIdToUse),
-        DatabaseService.getNotifications(userIdToUse)
-      ]);
-
-      dispatch({
-        type: 'SET_USER_DATA',
-        payload: {
-          user: userProfile,
-          investments,
-          investmentPlans,
-          transactions,
-          loans,
-          virtualAccounts,
-          wallet,
-          notifications
-        }
-      });
-    } catch (error) {
-      console.error('Error loading user data:', error);
-      setError('Failed to load user data');
-    } finally {
-      setDataLoading(false);
-    }
-  };
-
   const signIn = async (email: string, password: string) => {
-    setError(null);
     try {
-      const { user, error } = await AuthService.signIn(email, password);
-      if (error) {
-        setError(error);
-        throw new Error(error);
-      }
-      setAuthUser(user);
-      if (user) {
-        await loadUserData(user.id);
-      }
+      setLoading(true);
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      if (error) throw error;
     } catch (error: any) {
-      console.error('Error signing in:', error);
-      setError(error.message);
+      console.error('Sign in error:', error);
+      Alert.alert('Sign In Error', error.message);
       throw error;
+    } finally {
+      setLoading(false);
     }
   };
 
   const signUp = async (email: string, password: string) => {
-    setError(null);
     try {
-      const { user, error } = await AuthService.signUp(email, password);
-      if (error) {
-        setError(error);
-        throw new Error(error);
-      }
-      setAuthUser(user);
-      if (user) {
-        await loadUserData(user.id);
-      }
+      setLoading(true);
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+      });
+      if (error) throw error;
+      Alert.alert('Success', 'Check your email for the confirmation link!');
     } catch (error: any) {
-      console.error('Error signing up:', error);
-      setError(error.message);
+      console.error('Sign up error:', error);
+      Alert.alert('Sign Up Error', error.message);
       throw error;
+    } finally {
+      setLoading(false);
     }
   };
 
   const signOut = async () => {
     try {
-      await AuthService.signOut();
-      setAuthUser(null);
-      dispatch({ type: 'RESET_DATA' });
+      setLoading(true);
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
     } catch (error: any) {
-      console.error('Error signing out:', error);
-      setError(error.message);
-      throw error;
+      console.error('Sign out error:', error);
+      Alert.alert('Sign Out Error', error.message);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const createInvestment = async (planId: string, amount: number) => {
-    if (!authUser) throw new Error('User not authenticated');
-
-    const plan = state.investmentPlans.find(p => p.id === planId);
-    if (!plan) throw new Error('Investment plan not found');
-
-    const investment: Omit<Investment, 'id' | 'created_at'> = {
-      user_ID: authUser.id,
-      amount,
-      minAmount: plan.min_amount,
-      maxAmount: plan.max_amount,
-      'Return On Investment': plan.roi_percentage / 100,
-      durationValue: plan.duration_months,
-      durationUnit: 'months',
-      startDate: new Date().toISOString(),
-      maturityDate: new Date(Date.now() + plan.duration_months * 30 * 24 * 60 * 60 * 1000).toISOString(),
-      status: 'active',
-      payoutAmount: 0,
-      InvestmentBalance: amount,
-      InvestmentID: `INV_${Date.now()}`,
-      InvestmentType: plan.name,
-      'Expected Profit': amount * (plan.roi_percentage / 100),
-      payment_method: 'wallet',
-      payment_status: 'completed'
-    };
+  const loadUserData = async () => {
+    if (!user) return;
 
     try {
-      const createdInvestment = await DatabaseService.createInvestment(investment);
-      if (createdInvestment) {
-        dispatch({ type: 'ADD_INVESTMENT', payload: createdInvestment });
+      // Load investments
+      const { data: investments, error: investError } = await supabase
+        .from('Investment')
+        .select('*')
+        .eq('user_ID', user.id);
+
+      if (investError) throw investError;
+      dispatch({ type: 'SET_INVESTMENTS', payload: investments || [] });
+
+      // Load loans
+      const { data: loans, error: loanError } = await supabase
+        .from('Loan')
+        .select('*')
+        .eq('user_Id', user.id);
+
+      if (loanError) throw loanError;
+      dispatch({ type: 'SET_LOANS', payload: loans || [] });
+
+      // Load KYC
+      const { data: kyc, error: kycError } = await supabase
+        .from('KYC')
+        .select('*')
+        .eq('email', user.email)
+        .single();
+
+      if (kycError && kycError.code !== 'PGRST116') { // PGRST116 is "not found"
+        throw kycError;
       }
+      dispatch({ type: 'SET_KYC', payload: kyc || null });
+
     } catch (error: any) {
-      console.error('Error creating investment:', error);
+      console.error('Error loading user data:', error);
       throw error;
     }
   };
 
-  const applyForLoan = async (amount: number, durationMonths: number) => {
-    if (!authUser) throw new Error('User not authenticated');
+  const createInvestment = async (investmentData: Omit<Investment, 'id' | 'created_at' | 'user_ID'>) => {
+    if (!user) throw new Error('User not authenticated');
 
-    const interestRate = 0.15; // 15% annual rate
-    const totalPayable = amount * (1 + interestRate * (durationMonths / 12));
+    const { error } = await supabase
+      .from('Investment')
+      .insert({
+        ...investmentData,
+        user_ID: user.id,
+      });
 
-    const loan: Omit<Loan, 'id' | 'created_at' | 'loanID'> = {
-      user_Id: authUser.id,
-      loanAmount: amount,
-      interestRate,
-      durationValue: durationMonths,
-      durationUnit: 'months',
-      status: 'pending',
-      applicationDate: new Date().toISOString(),
-      dueDate: new Date(Date.now() + durationMonths * 30 * 24 * 60 * 60 * 1000).toISOString(),
-      totalPayable,
-      amountRepaid: 0
-    };
-
-    try {
-      const createdLoan = await DatabaseService.applyForLoan(loan);
-      if (createdLoan) {
-        dispatch({ type: 'ADD_LOAN', payload: createdLoan });
-      }
-    } catch (error: any) {
-      console.error('Error applying for loan:', error);
-      throw error;
-    }
+    if (error) throw error;
+    await loadUserData();
   };
 
-  const depositFunds = async (amount: number) => {
-    if (!authUser) throw new Error('User not authenticated');
+  const applyForLoan = async (loanData: Omit<Loan, 'id' | 'created_at' | 'user_Id'>) => {
+    if (!user) throw new Error('User not authenticated');
 
-    const transaction: Omit<Transaction, 'id' | 'created_at'> = {
-      user_Id: authUser.id,
-      type: 'deposit',
-      method: 'bank_transfer',
-      amount,
-      status: 'completed',
-      referenceCode: `DEP_${Date.now()}`,
-      timestamp: new Date().toISOString(),
-      currency: 'USD',
-      'Sender Account': 'External Bank',
-      receipientAccount: 'Wallet',
-      transactionID: `TXN_${Date.now()}`
-    };
+    const { error } = await supabase
+      .from('Loan')
+      .insert({
+        ...loanData,
+        user_Id: user.id,
+        status: 'pending',
+      });
 
-    try {
-      const createdTransaction = await DatabaseService.createTransaction(transaction);
-      if (createdTransaction) {
-        dispatch({ type: 'ADD_TRANSACTION', payload: createdTransaction });
-        // Update wallet balance
-        if (state.wallet) {
-          const updatedWallet = { ...state.wallet, balance: (state.wallet.balance || 0) + amount };
-          await DatabaseService.updateWalletBalance(authUser.id, updatedWallet.balance);
-          dispatch({ type: 'UPDATE_WALLET', payload: updatedWallet });
-        }
-      }
-    } catch (error: any) {
-      console.error('Error depositing funds:', error);
-      throw error;
-    }
+    if (error) throw error;
+    await loadUserData();
   };
 
-  const withdrawFunds = async (amount: number) => {
-    if (!authUser) throw new Error('User not authenticated');
-    if (!state.wallet || state.wallet.balance < amount) {
-      throw new Error('Insufficient balance');
-    }
+  const approveLoan = async (loanId: string) => {
+    const { error } = await supabase
+      .from('Loan')
+      .update({ status: 'approved' })
+      .eq('id', loanId);
 
-    const transaction: Omit<Transaction, 'id' | 'created_at'> = {
-      user_Id: authUser.id,
-      type: 'withdrawal',
-      method: 'bank_transfer',
-      amount: -amount,
-      status: 'pending',
-      referenceCode: `WTH_${Date.now()}`,
-      timestamp: new Date().toISOString(),
-      currency: 'USD',
-      'Sender Account': 'Wallet',
-      receipientAccount: 'External Bank',
-      transactionID: `TXN_${Date.now()}`
-    };
-
-    try {
-      const createdTransaction = await DatabaseService.createTransaction(transaction);
-      if (createdTransaction) {
-        dispatch({ type: 'ADD_TRANSACTION', payload: createdTransaction });
-        // Update wallet balance
-        const updatedWallet = { ...state.wallet, balance: state.wallet.balance - amount };
-        await DatabaseService.updateWalletBalance(authUser.id, updatedWallet.balance);
-        dispatch({ type: 'UPDATE_WALLET', payload: updatedWallet });
-      }
-    } catch (error: any) {
-      console.error('Error withdrawing funds:', error);
-      throw error;
-    }
+    if (error) throw error;
+    await loadUserData();
   };
 
-  const markNotificationAsRead = async (notificationId: number) => {
-    try {
-      const success = await DatabaseService.markNotificationAsRead(notificationId);
-      if (success) {
-        dispatch({ type: 'MARK_NOTIFICATION_READ', payload: notificationId });
-      }
-    } catch (error: any) {
-      console.error('Error marking notification as read:', error);
-      throw error;
-    }
+  const value = {
+    state,
+    user,
+    session,
+    loading,
+    signIn,
+    signUp,
+    signOut,
+    loadUserData,
+    createInvestment,
+    applyForLoan,
+    approveLoan,
+    accounts: [], // Mock accounts for now
+    loans: state.loans,
   };
 
-  const contextValue = useMemo<AppContextType>(
-    () => ({
-      ...state,
-      authUser,
-      loading,
-      dataLoading,
-      error,
-      signIn,
-      signUp,
-      signOut,
-      createInvestment,
-      applyForLoan,
-      depositFunds,
-      withdrawFunds,
-      loadUserData,
-      markNotificationAsRead,
-    }),
-    [state, authUser, loading, dataLoading, error]
+  return (
+    <AppStateContext.Provider value={value}>
+      {children}
+    </AppStateContext.Provider>
   );
+}
 
-  return <AppContext.Provider value={contextValue}>{children}</AppContext.Provider>;
-};
-
-export const useAppState = (): AppContextType => {
-  const context = useContext(AppContext);
-  if (!context) {
+export function useAppState() {
+  const context = useContext(AppStateContext);
+  if (context === undefined) {
     throw new Error('useAppState must be used within an AppStateProvider');
   }
   return context;
-};
+}
