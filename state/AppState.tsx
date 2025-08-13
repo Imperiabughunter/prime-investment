@@ -123,7 +123,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return () => {
       subscription.unsubscribe();
     };
-  }, []);
+  }, [loadUserData]);
 
   const loadUserData = async () => {
     if (!user) return;
@@ -133,7 +133,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       // Load user's accounts with error handling
       const { data: accounts, error: accountsError } = await supabase
-        .from('Virtual Account')
+        .from('accounts')
         .select('*')
         .eq('user_id', user.id);
 
@@ -143,9 +143,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       // Load user's investments with error handling
       const { data: investments, error: investmentsError } = await supabase
-        .from('Investment')
+        .from('investments')
         .select('*')
-        .eq('user_ID', user.id);
+        .eq('user_id', user.id);
 
       if (investmentsError) {
         console.error('Investments query error:', investmentsError);
@@ -153,9 +153,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       // Load user's loans with error handling
       const { data: loans, error: loansError } = await supabase
-        .from('Loan')
+        .from('loans')
         .select('*')
-        .eq('user_Id', user.id);
+        .eq('user_id', user.id);
 
       if (loansError) {
         console.error('Loans query error:', loansError);
@@ -163,9 +163,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       // Load user's transactions with error handling
       const { data: transactions, error: transactionsError } = await supabase
-        .from('Transactions')
+        .from('transactions')
         .select('*')
-        .eq('user_Id', user.id)
+        .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
       if (transactionsError) {

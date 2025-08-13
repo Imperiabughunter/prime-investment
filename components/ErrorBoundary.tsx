@@ -1,7 +1,6 @@
-
 import React, { Component, ReactNode } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { Button } from './Button';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { Button } from './Button'; // Assuming Button is a local component
 
 interface Props {
   children: ReactNode;
@@ -25,7 +24,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error('Error boundary caught an error:', error, errorInfo);
-    
+
     // Send error to error logging service
     if (typeof window !== 'undefined' && window.parent) {
       window.parent.postMessage(
@@ -46,31 +45,33 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   handleRetry = () => {
+    // Reset the error state to allow the app to re-render
     this.setState({ hasError: false, error: undefined });
   };
 
   render() {
     if (this.state.hasError) {
+      // Check if the error is related to authentication
+      const isAuthError = this.state.error?.message?.includes('auth') || 
+                         this.state.error?.message?.includes('Authentication');
+
       if (this.props.fallback) {
+        // If a custom fallback is provided, render it
         return this.props.fallback;
       }
 
       return (
         <View style={styles.container}>
-          <Text style={styles.title}>Something went wrong</Text>
-          <Text style={styles.message}>
-            We've encountered an unexpected error. Please try again.
+          <Text style={styles.title}>
+            {isAuthError ? 'Authentication Error' : 'Something went wrong'}
           </Text>
-          {__DEV__ && this.state.error && (
-            <Text style={styles.errorDetails}>
-              {this.state.error.message}
-            </Text>
-          )}
-          <Button
-            title="Try Again"
-            onPress={this.handleRetry}
-            style={styles.button}
-          />
+          <Text style={styles.message}>
+            {this.state.error?.message || 'An unexpected error occurred'}
+          </Text>
+          {/* Render retry button for all errors */}
+          <TouchableOpacity style={styles.button} onPress={this.handleRetry}>
+            <Text style={styles.buttonText}>Try Again</Text>
+          </TouchableOpacity>
         </View>
       );
     }
@@ -85,30 +86,41 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
-    backgroundColor: '#000',
+    backgroundColor: '#000', // Dark background
   },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#FFB800',
+    color: '#FFB800', // Amber color for title
     marginBottom: 16,
     textAlign: 'center',
   },
   message: {
     fontSize: 16,
-    color: '#fff',
+    color: '#fff', // White text for message
     textAlign: 'center',
     marginBottom: 24,
     lineHeight: 22,
   },
   errorDetails: {
     fontSize: 12,
-    color: '#FF6B6B',
+    color: '#FF6B6B', // Reddish color for error details
     fontFamily: 'monospace',
     marginBottom: 24,
     textAlign: 'center',
   },
   button: {
     minWidth: 120,
+    backgroundColor: '#FFB800', // Amber button
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  buttonText: {
+    color: '#000', // Black text for button
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });

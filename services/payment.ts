@@ -1,22 +1,30 @@
 
 import { supabase } from '../lib/supabase';
 
-interface PaymentResponse {
+export interface PaymentResponse {
   success: boolean;
   transactionId?: string;
   paymentUrl?: string;
   error?: string;
 }
 
+export interface BankDetails {
+  accountNumber: string;
+  routingNumber: string;
+  accountName: string;
+  bankName: string;
+}
+
 export class PaymentService {
-  private static baseUrl = process.env.EXPO_PUBLIC_PAYMENT_API_URL;
-  private static apiKey = process.env.PAYMENT_API_KEY;
+  private static baseUrl = process.env.EXPO_PUBLIC_PAYMENT_API_URL || 'https://api.example-payment-provider.com';
+  private static apiKey = process.env.EXPO_PUBLIC_PAYMENT_API_KEY || 'your-api-key';
 
   static async initiateDeposit(amount: number, userId: string): Promise<PaymentResponse> {
     try {
       const idempotencyKey = `deposit_${userId}_${Date.now()}`;
       
-      const response = await fetch(`${this.baseUrl}/payments/create`, {
+      // Mock payment provider integration
+      const response = await fetch(`${this.baseUrl}/payments/initiate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -24,22 +32,17 @@ export class PaymentService {
           'Idempotency-Key': idempotencyKey,
         },
         body: JSON.stringify({
-          amount: amount * 100, // Convert to cents
+          amount,
           currency: 'USD',
-          customer_id: userId,
-          success_url: `${window.location.origin}/deposit/success`,
-          cancel_url: `${window.location.origin}/deposit/cancel`,
-          metadata: {
-            user_id: userId,
-            type: 'deposit',
-          },
+          type: 'deposit',
+          userId,
         }),
       });
 
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.message || 'Payment initialization failed');
+        throw new Error(data.message || 'Payment initiation failed');
       }
 
       // Create pending transaction record
@@ -114,7 +117,7 @@ export class PaymentService {
     }
   }
 
-  static async initiateWithdrawal(amount: number, userId: string, bankDetails: any): Promise<PaymentResponse> {
+  static async initiateWithdrawal(amount: number, userId: string, bankDetails: BankDetails): Promise<PaymentResponse> {
     try {
       // Check user balance first
       const { data: user } = await supabase
