@@ -91,6 +91,27 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24,
     fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  message: {
+    fontSize: 16,
+    color: '#ccc',
+    marginBottom: 24,
+    textAlign: 'center',
+    lineHeight: 24,
+  },
+  button: {
+    backgroundColor: '#007AFF',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  buttonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',ontWeight: 'bold',
     color: '#FFB800', // Amber color for title
     marginBottom: 16,
     textAlign: 'center',

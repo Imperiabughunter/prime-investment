@@ -1,57 +1,67 @@
-
-export type Account = {
+export interface User {
   id: string;
+  email: string;
+  emailConfirmed: boolean;
+  lastSignInAt?: string;
+}
+
+export interface Account {
+  id: string;
+  user_id: string;
   name: string;
-  number: string;
+  type: 'checking' | 'savings' | 'investment';
   balance: number;
-};
+  currency: string;
+  created_at: string;
+  updated_at: string;
+}
 
-export type InvestmentPlan = {
+export interface Transaction {
   id: string;
-  name: string;
-  minAmount: number;
-  maxAmount: number;
-  roi: number; // total ROI for the duration (e.g., 0.2 => 20%)
-  compoundingRate: number; // number of times compounded per duration period
-  durationDays: number;
+  user_id: string;
+  from_account_id?: string;
+  to_account_id?: string;
+  amount: number;
+  type: 'transfer' | 'deposit' | 'withdrawal' | 'payment';
   description: string;
-};
-
-export type Investment = {
-  id: string;
-  planId: string;
-  amount: number;
-  startDate: string;
-  endDate: string;
-  status: 'active' | 'completed';
-  expectedReturn: number;
-};
-
-export type Loan = {
-  id: string;
-  amount: number;
-  termMonths: number;
-  interestRate: number;
-  status: 'pending' | 'approved' | 'rejected' | 'repaid';
-  disbursedToAccountId: string;
-  createdAt: string;
-  approvedAt?: string;
-};
-
-export type Transaction = {
-  id: string;
-  type: 'loan' | 'investment' | 'transfer' | 'deposit';
-  amount: number;
-  date: string;
   status: 'pending' | 'completed' | 'failed';
-  description: string;
-  meta?: Record<string, any>;
-};
+  created_at: string;
+  updated_at: string;
+}
 
-export type AppState = {
-  accounts: Account[];
-  plans: InvestmentPlan[];
-  investments: Investment[];
-  loans: Loan[];
-  transactions: Transaction[];
-};
+export interface Loan {
+  id: string;
+  user_id: string;
+  account_id: string;
+  amount: number;
+  interest_rate: number;
+  term_months: number;
+  status: 'pending' | 'approved' | 'rejected' | 'active' | 'paid';
+  monthly_payment: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Investment {
+  id: string;
+  user_id: string;
+  name: string;
+  type: 'stocks' | 'bonds' | 'mutual_funds' | 'etf';
+  amount_invested: number;
+  current_value: number;
+  shares: number;
+  purchase_price: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ValidationResult {
+  isValid: boolean;
+  error?: string;
+}
+
+export interface PaymentResult {
+  success: boolean;
+  transactionId?: string;
+  error?: string;
+}

@@ -95,7 +95,7 @@ export class AuthService {
 
   static async getCurrentUser(): Promise<AuthUser | null> {
     try {
-      const { data: { user }, error } = await supabase.auth.getUser();
+      const { data: { user }, error } = await supabase.autconst { data: { user }, error } = await supabase.auth.getUser();
       
       if (error || !user) {
         return null;
@@ -108,7 +108,44 @@ export class AuthService {
         lastSignInAt: user.last_sign_in_at || undefined,
       };
     } catch (error) {
-      console.error('Error getting current user:', error);
+      console.error('Get current user error:', error);
+      return null;
+    }
+  },
+
+  async signOut() {
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      return { error: null };
+    } catch (error) {
+      console.error('Sign out error:', error);
+      return { error: error as Error };
+    }
+  },
+
+  async resetPassword(email: string) {
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email);
+      if (error) throw error;
+      return { error: null };
+    } catch (error) {
+      console.error('Reset password error:', error);
+      return { error: error as Error };
+    }
+  },
+
+  onAuthStateChange(callback: (user: User | null) => void) {
+    return supabase.auth.onAuthStateChange((event, session) => {
+      callback(session?.user ? {
+        id: session.user.id,
+        email: session.user.email!,
+        emailConfirmed: session.user.email_confirmed_at !== null,
+        lastSignInAt: session.user.last_sign_in_at || undefined,
+      } : null);
+    });
+  }
+};error('Error getting current user:', error);
       return null;
     }
   }

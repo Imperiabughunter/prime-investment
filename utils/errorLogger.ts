@@ -208,3 +208,69 @@ export const setupErrorLogging = () => {
     }
   }
 };
+interface ErrorLog {
+  timestamp: string;
+  level: 'error' | 'warning' | 'info';
+  message: string;
+  stack?: string;
+  userId?: string;
+  context?: Record<string, any>;
+}
+
+class ErrorLogger {
+  private logs: ErrorLog[] = [];
+  private maxLogs = 100;
+
+  log(level: 'error' | 'warning' | 'info', message: string, error?: Error, context?: Record<string, any>, userId?: string) {
+    const errorLog: ErrorLog = {
+      timestamp: new Date().toISOString(),
+      level,
+      message,
+      stack: error?.stack,
+      userId,
+      context
+    };
+
+    this.logs.unshift(errorLog);
+    
+    // Keep only the last maxLogs entries
+    if (this.logs.length > this.maxLogs) {
+      this.logs = this.logs.slice(0, this.maxLogs);
+    }
+
+    // Log to console in development
+    if (__DEV__) {
+      console[level](message, error, context);
+    }
+
+    // In production, you might want to send to a logging service
+    // this.sendToLoggingService(errorLog);
+  }
+
+  error(message: string, error?: Error, context?: Record<string, any>, userId?: string) {
+    this.log('error', message, error, context, userId);
+  }
+
+  warning(message: string, context?: Record<string, any>, userId?: string) {
+    this.log('warning', message, undefined, context, userId);
+  }
+
+  info(message: string, context?: Record<string, any>, userId?: string) {
+    this.log('info', message, undefined, context, userId);
+  }
+
+  getLogs(): ErrorLog[] {
+    return [...this.logs];
+  }
+
+  clearLogs() {
+    this.logs = [];
+  }
+
+  private async sendToLoggingService(errorLog: ErrorLog) {
+    // Implement your logging service integration here
+    // For example, send to Sentry, LogRocket, or your own backend
+  }
+}
+
+export const errorLogger = new ErrorLogger();

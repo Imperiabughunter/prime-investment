@@ -1,10 +1,10 @@
-
 import React, { createContext, useContext, useMemo, useReducer, useEffect, useState } from 'react';
 import { seedPlans } from '../data/plans';
 import { Account, AppState, Investment, InvestmentPlan, Loan, Transaction } from '../types';
 import { randomId } from '../utils/randomId';
 import { AuthService, AuthUser } from '../services/auth';
 import { supabase } from '../lib/supabase';
+import { databaseService } from '../services/database';
 
 const estimatePlanReturn = (plan: InvestmentPlan, amount: number) => {
   if (amount <= 0) return { expectedReturn: 0, maturityAmount: 0 };
@@ -19,6 +19,8 @@ interface AppContextType {
   state: AppState;
   user: AuthUser | null;
   loading: boolean;
+  dataLoading: boolean;
+  error: string | null;
   signIn: (email: string, password: string) => Promise<{ error: any }>;
   signUp: (email: string, password: string, displayName: string) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
@@ -26,7 +28,7 @@ interface AppContextType {
   applyForLoan: (amount: number, termMonths: number) => Promise<void>;
   depositFunds: (amount: number) => Promise<void>;
   withdrawFunds: (amount: number) => Promise<void>;
-  loadUserData: () => Promise<void>;
+  loadUserData: (userId: string) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -90,146 +92,140 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [state, dispatch] = useReducer(appReducer, initialState);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [dataLoading, setDataLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    // Initialize auth state
-    const initAuth = async () => {
-      try {
-        const currentUser = await AuthService.getCurrentUser();
-        setUser(currentUser);
-        if (currentUser) {
-          await loadUserData();
-        }
-      } catch (error) {
-        console.error('Auth initialization error:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
+  const setAccounts = (accounts: Account[]) => dispatch({ type: 'SET_USER_DATA', payload: { accounts } });
+  const setTransactions = (transactions: Transaction[]) => dispatch({ type: 'SET_USER_DATA', payload: { transactions } });
+  const setLoans = (loans: Loan[]) => dispatch({ type: 'SET_USER_DATA', payload: { loans } });
+  const setInvestments = (investments: Investment[]) => dispatch({ type: 'SET_USER_DATA', payload: { investments } });
 
-    initAuth();
-
-    // Listen for auth changes
-    const { data: { subscription } } = AuthService.onAuthStateChange(async (user) => {
-      setUser(user);
-      if (user) {
-        await loadUserData();
-      } else {
-        // Reset state on logout
-        dispatch({ type: 'SET_USER_DATA', payload: initialState });
-      }
-    });
-
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, [loadUserData]);
-
-  const loadUserData = async () => {
-    if (!user) return;
-
+  const checkUser = async () => {
+    setLoading(true);
     try {
-      setLoading(true);
-
-      // Load user's accounts with error handling
-      const { data: accounts, error: accountsError } = await supabase
-        .from('accounts')
-        .select('*')
-        .eq('user_id', user.id);
-
-      if (accountsError) {
-        console.error('Accounts query error:', accountsError);
+      const currentUser = await AuthService.getCurrentUser();
+      setUser(currentUser);
+      if (currentUser) {
+        await loadUserData(currentUser.id);
       }
-
-      // Load user's investments with error handling
-      const { data: investments, error: investmentsError } = await supabase
-        .from('investments')
-        .select('*')
-        .eq('user_id', user.id);
-
-      if (investmentsError) {
-        console.error('Investments query error:', investmentsError);
-      }
-
-      // Load user's loans with error handling
-      const { data: loans, error: loansError } = await supabase
-        .from('loans')
-        .select('*')
-        .eq('user_id', user.id);
-
-      if (loansError) {
-        console.error('Loans query error:', loansError);
-      }
-
-      // Load user's transactions with error handling
-      const { data: transactions, error: transactionsError } = await supabase
-        .from('transactions')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
-
-      if (transactionsError) {
-        console.error('Transactions query error:', transactionsError);
-      }
-
-      // Load investment plans with error handling
-      const { data: plans, error: plansError } = await supabase
-        .from('investment_plans')
-        .select('*')
-        .eq('status', 'active');
-
-      if (plansError) {
-        console.error('Plans query error:', plansError);
-      }
-
-      dispatch({
-        type: 'SET_USER_DATA',
-        payload: {
-          accounts: accounts || [],
-          investments: investments || [],
-          loans: loans || [],
-          transactions: transactions || [],
-          plans: plans || seedPlans,
-        },
-      });
     } catch (error) {
-      console.error('Error loading user data:', error);
-      // Set default data on error
-      dispatch({
-        type: 'SET_USER_DATA',
-        payload: {
-          accounts: [],
-          investments: [],
-          loans: [],
-          transactions: [],
-          plans: seedPlans,
-        },
-      });
+      console.error('Error checking user:', error);
+      setError('Failed to check user status.');
     } finally {
       setLoading(false);
     }
   };
 
+  useEffect(() => {
+    checkUser();
+    const { data: { subscription } } = AuthService.onAuthStateChange((user) => {
+      setUser(user);
+      if (user) {
+        loadUserData(user.id);
+      } else {
+        resetData();
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const loadUserData = async (userId: string) => {
+    setDataLoading(true);
+    setError(null);
+
+    try {
+      const [accountsData, transactionsData, loansData, investmentsData, plansData] = await Promise.all([
+        databaseService.getAccounts(userId),
+        databaseService.getTransactions(userId),
+        databaseService.getLoans(userId),
+        databaseService.getInvestments(userId),
+        databaseService.getActiveInvestmentPlans()
+      ]);
+
+      setAccounts(accountsData);
+      setTransactions(transactionsData);
+      setLoans(loansData);
+      setInvestments(investmentsData);
+      dispatch({ type: 'SET_PLANS', payload: plansData });
+    } catch (error) {
+      console.error('Error loading user data:', error);
+      setError('Failed to load user data');
+    } finally {
+      setDataLoading(false);
+    }
+  };
+
+  const resetData = () => {
+    setAccounts([]);
+    setTransactions([]);
+    setLoans([]);
+    setInvestments([]);
+    dispatch({ type: 'SET_PLANS', payload: seedPlans }); // Reset to default plans
+    setError(null);
+  };
+
   const signIn = async (email: string, password: string) => {
     setLoading(true);
-    const result = await AuthService.signIn(email, password);
-    setLoading(false);
-    return result;
+    setError(null);
+    try {
+      const { error: authError, user: authUser } = await AuthService.signIn(email, password);
+      if (authError) {
+        setError(authError.message);
+        return { error: authError };
+      }
+      if (authUser) {
+        setUser(authUser);
+        await loadUserData(authUser.id);
+      }
+      return { error: null };
+    } catch (error: any) {
+      console.error('Sign in error:', error);
+      setError(error.message || 'An unexpected error occurred during sign-in.');
+      return { error };
+    } finally {
+      setLoading(false);
+    }
   };
 
   const signUp = async (email: string, password: string, displayName: string) => {
     setLoading(true);
-    const result = await AuthService.signUp(email, password, displayName);
-    setLoading(false);
-    return result;
+    setError(null);
+    try {
+      const { error: authError, user: authUser } = await AuthService.signUp(email, password, displayName);
+      if (authError) {
+        setError(authError.message);
+        return { error: authError };
+      }
+      if (authUser) {
+        setUser(authUser);
+        // Initialize user data after sign up
+        await databaseService.initializeUserData(authUser.id, displayName);
+        await loadUserData(authUser.id);
+      }
+      return { error: null };
+    } catch (error: any) {
+      console.error('Sign up error:', error);
+      setError(error.message || 'An unexpected error occurred during sign-up.');
+      return { error };
+    } finally {
+      setLoading(false);
+    }
   };
 
   const signOut = async () => {
     setLoading(true);
-    await AuthService.signOut();
-    setUser(null);
-    dispatch({ type: 'SET_USER_DATA', payload: initialState });
-    setLoading(false);
+    setError(null);
+    try {
+      await AuthService.signOut();
+      setUser(null);
+      resetData();
+    } catch (error: any) {
+      console.error('Sign out error:', error);
+      setError(error.message || 'An unexpected error occurred during sign-out.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const createInvestment = async (planId: string, amount: number) => {
@@ -243,13 +239,12 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     const { expectedReturn, maturityAmount } = estimatePlanReturn(plan, amount);
-    
+
     const startDate = new Date();
     const endDate = new Date();
     endDate.setDate(startDate.getDate() + plan.durationDays);
 
-    const investment: Investment = {
-      id: randomId(),
+    const newInvestment: Omit<Investment, 'id'> = {
       planId,
       amount,
       startDate: startDate.toISOString(),
@@ -258,48 +253,22 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       expectedReturn,
     };
 
-    // Create investment in database
-    const { error } = await supabase
-      .from('investments')
-      .insert({
-        ...investment,
-        user_id: user.id,
-        plan_id: planId,
-        start_date: startDate.toISOString(),
-        end_date: endDate.toISOString(),
-        expected_return: expectedReturn,
-      });
+    // Create investment and transaction in database
+    try {
+      const { investment: createdInvestment, transaction: createdTransaction } = await databaseService.createInvestment(user.id, plan, newInvestment, amount);
 
-    if (error) throw error;
-
-    // Create transaction record
-    const transaction: Transaction = {
-      id: randomId(),
-      type: 'investment',
-      amount,
-      date: new Date().toISOString(),
-      status: 'completed',
-      description: `Investment in ${plan.name}`,
-      meta: { planId, investmentId: investment.id },
-    };
-
-    await supabase
-      .from('transactions')
-      .insert({
-        ...transaction,
-        user_id: user.id,
-        created_at: transaction.date,
-      });
-
-    dispatch({ type: 'ADD_INVESTMENT', payload: investment });
-    dispatch({ type: 'ADD_TRANSACTION', payload: transaction });
+      dispatch({ type: 'ADD_INVESTMENT', payload: createdInvestment });
+      dispatch({ type: 'ADD_TRANSACTION', payload: createdTransaction });
+    } catch (error: any) {
+      console.error('Error creating investment:', error);
+      throw error;
+    }
   };
 
   const applyForLoan = async (amount: number, termMonths: number) => {
     if (!user) throw new Error('User not authenticated');
 
-    const loan: Loan = {
-      id: randomId(),
+    const loan: Omit<Loan, 'id'> = {
       amount,
       termMonths,
       interestRate: 0.15, // 15% annual rate
@@ -308,20 +277,13 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       createdAt: new Date().toISOString(),
     };
 
-    // Create loan in database
-    const { error } = await supabase
-      .from('loans')
-      .insert({
-        ...loan,
-        user_id: user.id,
-        term_months: termMonths,
-        interest_rate: loan.interestRate,
-        created_at: loan.createdAt,
-      });
-
-    if (error) throw error;
-
-    dispatch({ type: 'ADD_LOAN', payload: loan });
+    try {
+      const createdLoan = await databaseService.applyForLoan(user.id, loan);
+      dispatch({ type: 'ADD_LOAN', payload: createdLoan });
+    } catch (error: any) {
+      console.error('Error applying for loan:', error);
+      throw error;
+    }
   };
 
   const depositFunds = async (amount: number) => {
@@ -329,8 +291,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     // This would integrate with payment gateway
     // For now, simulate successful deposit
-    const transaction: Transaction = {
-      id: randomId(),
+    const transaction: Omit<Transaction, 'id'> = {
       type: 'deposit',
       amount,
       date: new Date().toISOString(),
@@ -338,22 +299,19 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       description: `Deposit of $${amount}`,
     };
 
-    await supabase
-      .from('transactions')
-      .insert({
-        ...transaction,
-        user_id: user.id,
-        created_at: transaction.date,
-      });
-
-    dispatch({ type: 'ADD_TRANSACTION', payload: transaction });
+    try {
+      const createdTransaction = await databaseService.createTransaction(user.id, transaction);
+      dispatch({ type: 'ADD_TRANSACTION', payload: createdTransaction });
+    } catch (error: any) {
+      console.error('Error depositing funds:', error);
+      throw error;
+    }
   };
 
   const withdrawFunds = async (amount: number) => {
     if (!user) throw new Error('User not authenticated');
 
-    const transaction: Transaction = {
-      id: randomId(),
+    const transaction: Omit<Transaction, 'id'> = {
       type: 'transfer',
       amount: -amount,
       date: new Date().toISOString(),
@@ -361,15 +319,13 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       description: `Withdrawal of $${amount}`,
     };
 
-    await supabase
-      .from('transactions')
-      .insert({
-        ...transaction,
-        user_id: user.id,
-        created_at: transaction.date,
-      });
-
-    dispatch({ type: 'ADD_TRANSACTION', payload: transaction });
+    try {
+      const createdTransaction = await databaseService.createTransaction(user.id, transaction);
+      dispatch({ type: 'ADD_TRANSACTION', payload: createdTransaction });
+    } catch (error: any) {
+      console.error('Error withdrawing funds:', error);
+      throw error;
+    }
   };
 
   const contextValue = useMemo<AppContextType>(
@@ -377,6 +333,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       state,
       user,
       loading,
+      dataLoading,
+      error,
       signIn,
       signUp,
       signOut,
@@ -386,7 +344,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       withdrawFunds,
       loadUserData,
     }),
-    [state, user, loading]
+    [state, user, loading, dataLoading, error]
   );
 
   return <AppContext.Provider value={contextValue}>{children}</AppContext.Provider>;

@@ -14,11 +14,11 @@ mode = "sequential"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "npm install"
+args = "npm ci"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "npx expo start --web --port 5000"
+args = "npx expo start --web --port 5000 --host 0.0.0.0"
 
 [[workflows.workflow]]
 name = "Build APK"

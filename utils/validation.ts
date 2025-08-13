@@ -1,8 +1,3 @@
-
-export const validateAmount = (amount: number, min: number = 0, max: number = Infinity): boolean => {
-  return amount > min && amount <= max && !isNaN(amount) && isFinite(amount);
-};
-
 export const validateEmail = (email: string): boolean => {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   return emailRegex.test(email);
@@ -10,31 +5,42 @@ export const validateEmail = (email: string): boolean => {
 
 export const validatePassword = (password: string): { isValid: boolean; errors: string[] } => {
   const errors: string[] = [];
-  
+
   if (password.length < 8) {
     errors.push('Password must be at least 8 characters long');
   }
-  
-  if (!/(?=.*[a-z])/.test(password)) {
-    errors.push('Password must contain at least one lowercase letter');
-  }
-  
-  if (!/(?=.*[A-Z])/.test(password)) {
+  if (!/[A-Z]/.test(password)) {
     errors.push('Password must contain at least one uppercase letter');
   }
-  
-  if (!/(?=.*\d)/.test(password)) {
+  if (!/[a-z]/.test(password)) {
+    errors.push('Password must contain at least one lowercase letter');
+  }
+  if (!/\d/.test(password)) {
     errors.push('Password must contain at least one number');
   }
-  
+
   return {
     isValid: errors.length === 0,
-    errors,
+    errors
   };
 };
 
-export const sanitizeAmount = (amount: string): number => {
-  const cleaned = amount.replace(/[^0-9.]/g, '');
-  const parsed = parseFloat(cleaned);
-  return isNaN(parsed) ? 0 : Math.round(parsed * 100) / 100; // Round to 2 decimal places
+export const validateAmount = (amount: string | number): { isValid: boolean; value?: number; error?: string } => {
+  const numAmount = typeof amount === 'string' ? parseFloat(amount) : amount;
+
+  if (isNaN(numAmount)) {
+    return { isValid: false, error: 'Amount must be a valid number' };
+  }
+
+  if (numAmount <= 0) {
+    return { isValid: false, error: 'Amount must be greater than 0' };
+  }
+
+  if (numAmount > 1000000) {
+    return { isValid: false, error: 'Amount cannot exceed $1,000,000' };
+  }
+
+  return { isValid: true, value: numAmount };
 };
+
+export const validateTransfer = (amount: number, fromAccountId: string, toAccountId: string, accounts: Account[]): ValidationResult => {
