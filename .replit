@@ -18,7 +18,7 @@ args = "npm ci"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "npx expo start --web --port 5000 --host 0.0.0.0"
+args = "npx expo start --web --port 5000 --host localhost"
 
 [[workflows.workflow]]
 name = "Build APK"
